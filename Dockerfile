@@ -1,11 +1,13 @@
 FROM ubuntu:19.10
 
 
-ENV ENGINE_BRANCH=pandorabox
-ENV ENGINE_REPO=https://github.com/pandorabox-io/minetest.git
 ENV GAME_BRANCH=5.1.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
+ENV ENGINE_BRANCH=pandorabox-2020.01.09
+ENV ENGINE_REPO=https://github.com/pandorabox-io/minetest.git
+ENV ENGINE_BUILD_TYPE=Debug
+#ENV ENGINE_BUILD_TYPE=Release
 
 # https://github.com/minetest/minetest
 RUN apt-get update &&\
@@ -28,11 +30,12 @@ RUN cd /git && git clone https://github.com/jupp0r/prometheus-cpp -b v0.7.0 &&\
  cp /usr/local/lib/libprometheus-cpp-*.so /lib/x86_64-linux-gnu/
 
 # minetest
-RUN cd /git && git clone ${ENGINE_REPO} -b ${ENGINE_BRANCH} &&\
- cd /git/minetest/ && git clone --depth 1 ${GAME_REPO} games/minetest_game -b ${GAME_BRANCH} &&\
+RUN cd /git && git clone --depth 1 ${ENGINE_REPO} -b ${ENGINE_BRANCH}
+
+RUN cd /git/minetest/ && rm -rf games/minetest_game && git clone --depth 1 ${GAME_REPO} games/minetest_game -b ${GAME_BRANCH} &&\
  cmake . \
 	-DCMAKE_INSTALL_PREFIX=/usr/local\
-	-DCMAKE_BUILD_TYPE=Release\
+	-DCMAKE_BUILD_TYPE=${ENGINE_BUILD_TYPE} \
 	-DRUN_IN_PLACE=FALSE\
 	-DBUILD_SERVER=TRUE\
 	-DBUILD_CLIENT=FALSE\
@@ -63,4 +66,3 @@ COPY --from=0 /usr/local/lib/libprometheus-cpp-*.so /lib/x86_64-linux-gnu/
 EXPOSE 30000/udp
 
 CMD ["/usr/local/bin/minetestserver", "--config", "/etc/minetest/minetest.conf"]
-
