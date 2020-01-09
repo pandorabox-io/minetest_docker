@@ -6,7 +6,7 @@ ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
 ENV ENGINE_BRANCH=pandorabox-2020.01.09
 ENV ENGINE_REPO=https://github.com/pandorabox-io/minetest.git
-ENV ENGINE_BUILD_TYPE=Debug
+ENV ENGINE_BUILD_TYPE=RelWithDebInfo
 #ENV ENGINE_BUILD_TYPE=Release
 
 # https://github.com/minetest/minetest
@@ -62,7 +62,8 @@ WORKDIR /var/lib/minetest
 COPY --from=0 /usr/local/share/minetest /usr/local/share/minetest
 COPY --from=0 /usr/local/bin/minetestserver /usr/local/bin/minetestserver
 COPY --from=0 /usr/local/lib/libprometheus-cpp-*.so /lib/x86_64-linux-gnu/
+COPY ./entrypoint.sh /entrypoint.sh
 
 EXPOSE 30000/udp
 
-CMD ["/usr/local/bin/minetestserver", "--config", "/etc/minetest/minetest.conf"]
+CMD ["/entrypoint.sh"]
