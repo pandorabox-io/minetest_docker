@@ -4,10 +4,10 @@ FROM ubuntu:19.10
 ENV GAME_BRANCH=5.1.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=pandorabox-2020.01.09
-ENV ENGINE_REPO=https://github.com/pandorabox-io/minetest.git
-ENV ENGINE_BUILD_TYPE=RelWithDebInfo
-#ENV ENGINE_BUILD_TYPE=Release
+ENV ENGINE_BRANCH=5.1.0
+ENV ENGINE_REPO=https://github.com/minetest/minetest.git
+#ENV ENGINE_BUILD_TYPE=RelWithDebInfo
+ENV ENGINE_BUILD_TYPE=Release
 
 # https://github.com/minetest/minetest
 RUN apt-get update &&\
