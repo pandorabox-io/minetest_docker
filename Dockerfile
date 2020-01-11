@@ -17,18 +17,6 @@ RUN apt-get update &&\
 
 RUN mkdir /git
 
-# prometheus stuff
-RUN cd /git && git clone https://github.com/jupp0r/prometheus-cpp -b v0.7.0 &&\
- cd prometheus-cpp &&\
- git submodule init &&\
- git submodule update &&\
- mkdir _build && cd _build &&\
- cmake .. -DBUILD_SHARED_LIBS=ON &&\
- make -j4 &&\
- make install &&\
- cp /usr/local/lib/libprometheus-cpp-*.so /lib/x86_64-linux-gnu &&\
- cp /usr/local/lib/libprometheus-cpp-*.so /lib/x86_64-linux-gnu/
-
 # minetest
 RUN cd /git && git clone --depth 1 ${ENGINE_REPO} -b ${ENGINE_BRANCH}
 
@@ -61,7 +49,6 @@ WORKDIR /var/lib/minetest
 
 COPY --from=0 /usr/local/share/minetest /usr/local/share/minetest
 COPY --from=0 /usr/local/bin/minetestserver /usr/local/bin/minetestserver
-COPY --from=0 /usr/local/lib/libprometheus-cpp-*.so /lib/x86_64-linux-gnu/
 COPY ./entrypoint.sh /entrypoint.sh
 
 EXPOSE 30000/udp
