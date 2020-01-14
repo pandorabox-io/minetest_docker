@@ -4,7 +4,7 @@ FROM ubuntu:19.10
 ENV GAME_BRANCH=5.1.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=master
+ENV ENGINE_BRANCH=backport-5
 ENV ENGINE_REPO=https://github.com/minetest/minetest.git
 #ENV ENGINE_BUILD_TYPE=RelWithDebInfo
 ENV ENGINE_BUILD_TYPE=Release
