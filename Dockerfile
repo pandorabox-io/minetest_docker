@@ -45,7 +45,7 @@ RUN groupadd minetest && useradd -m -g minetest -d /var/lib/minetest minetest &&
     apt-get -y install libcurl4 libjsoncpp1 liblua5.1-0 libluajit-5.1-2 libpq5 libsqlite3-0 \
         libstdc++6 zlib1g libc6 libspatialindex5 libpq5 postgresql-client
 
-WORKDIR /var/lib/minetest
+WORKDIR /data
 
 COPY --from=0 /usr/local/share/minetest /usr/local/share/minetest
 COPY --from=0 /usr/local/bin/minetestserver /usr/local/bin/minetestserver
