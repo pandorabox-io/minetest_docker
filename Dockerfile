@@ -20,8 +20,12 @@ RUN mkdir /git
 # minetest
 RUN cd /git && git clone --depth 1 ${ENGINE_REPO} -b ${ENGINE_BRANCH}
 
-RUN cd /git/minetest/ && rm -rf games/minetest_game && git clone --depth 1 ${GAME_REPO} games/minetest_game -b ${GAME_BRANCH} &&\
- cmake . \
+RUN cd /git/minetest/ && rm -rf games/minetest_game && git clone --depth 1 ${GAME_REPO} games/minetest_game -b ${GAME_BRANCH}
+
+COPY patches/minetest_async_pg.patch /patches/minetest_async_pg.patch
+RUN cd /git/minetest && cat /patches/minetest_async_pg.patch | patch -p1
+
+RUN cd /git/minetest && cmake . \
 	-DCMAKE_INSTALL_PREFIX=/usr/local\
 	-DCMAKE_BUILD_TYPE=${ENGINE_BUILD_TYPE} \
 	-DRUN_IN_PLACE=FALSE\

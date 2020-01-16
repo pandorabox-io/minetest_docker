@@ -1,0 +1,1419 @@
+diff --git a/src/database/CMakeLists.txt b/src/database/CMakeLists.txt
+index e9d157c2..839c9152 100644
+--- a/src/database/CMakeLists.txt
++++ b/src/database/CMakeLists.txt
+@@ -4,6 +4,8 @@ set(database_SRCS
+ 	${CMAKE_CURRENT_SOURCE_DIR}/database-files.cpp
+ 	${CMAKE_CURRENT_SOURCE_DIR}/database-leveldb.cpp
+ 	${CMAKE_CURRENT_SOURCE_DIR}/database-postgresql.cpp
++	${CMAKE_CURRENT_SOURCE_DIR}/postgres/mapsavequeue.cpp
++	${CMAKE_CURRENT_SOURCE_DIR}/postgres/playersavequeue.cpp
+ 	${CMAKE_CURRENT_SOURCE_DIR}/database-redis.cpp
+ 	${CMAKE_CURRENT_SOURCE_DIR}/database-sqlite3.cpp
+ 	PARENT_SCOPE
+diff --git a/src/database/database-postgresql.cpp b/src/database/database-postgresql.cpp
+index d7c94ff1..931fb337 100644
+--- a/src/database/database-postgresql.cpp
++++ b/src/database/database-postgresql.cpp
+@@ -54,11 +54,14 @@ Database_PostgreSQL::Database_PostgreSQL(const std::string &connect_string) :
+ 			"DELETE rights on the database.\n"
+ 			"Don't create mt_user as a SUPERUSER!");
+ 	}
++
++
+ }
+ 
+ Database_PostgreSQL::~Database_PostgreSQL()
+ {
+-	PQfinish(m_conn);
++  PQfinish(m_conn);
++  PQfinish(m_async_conn);
+ }
+ 
+ void Database_PostgreSQL::connectToDatabase()
+@@ -71,6 +74,14 @@ void Database_PostgreSQL::connectToDatabase()
+ 			PQerrorMessage(m_conn));
+ 	}
+ 
++	m_async_conn = PQconnectdb(m_connect_string.c_str());
++
++	if (PQstatus(m_async_conn) != CONNECTION_OK) {
++		throw DatabaseException(std::string(
++			"PostgreSQL async database error: ") +
++			PQerrorMessage(m_async_conn));
++	}
++
+ 	m_pgversion = PQserverVersion(m_conn);
+ 
+ 	/*
+@@ -113,37 +124,16 @@ bool Database_PostgreSQL::initialized() const
+ 	return (PQstatus(m_conn) == CONNECTION_OK);
+ }
+ 
+-PGresult *Database_PostgreSQL::checkResults(PGresult *result, bool clear)
+-{
+-	ExecStatusType statusType = PQresultStatus(result);
+-
+-	switch (statusType) {
+-	case PGRES_COMMAND_OK:
+-	case PGRES_TUPLES_OK:
+-		break;
+-	case PGRES_FATAL_ERROR:
+-	default:
+-		throw DatabaseException(
+-			std::string("PostgreSQL database error: ") +
+-			PQresultErrorMessage(result));
+-	}
+-
+-	if (clear)
+-		PQclear(result);
+-
+-	return result;
+-}
+-
+ void Database_PostgreSQL::createTableIfNotExists(const std::string &table_name,
+ 		const std::string &definition)
+ {
+ 	std::string sql_check_table = "SELECT relname FROM pg_class WHERE relname='" +
+ 		table_name + "';";
+-	PGresult *result = checkResults(PQexec(m_conn, sql_check_table.c_str()), false);
++	PGresult *result = PGUtil::checkResults(PQexec(m_conn, sql_check_table.c_str()), false);
+ 
+ 	// If table doesn't exist, create it
+ 	if (!PQntuples(result)) {
+-		checkResults(PQexec(m_conn, definition.c_str()));
++		PGUtil::checkResults(PQexec(m_conn, definition.c_str()));
+ 	}
+ 
+ 	PQclear(result);
+@@ -152,12 +142,12 @@ void Database_PostgreSQL::createTableIfNotExists(const std::string &table_name,
+ void Database_PostgreSQL::beginSave()
+ {
+ 	verifyDatabase();
+-	checkResults(PQexec(m_conn, "BEGIN;"));
++	PGUtil::checkResults(PQexec(m_conn, "BEGIN;"));
+ }
+ 
+ void Database_PostgreSQL::endSave()
+ {
+-	checkResults(PQexec(m_conn, "COMMIT;"));
++	PGUtil::checkResults(PQexec(m_conn, "COMMIT;"));
+ }
+ 
+ MapDatabasePostgreSQL::MapDatabasePostgreSQL(const std::string &connect_string):
+@@ -165,8 +155,17 @@ MapDatabasePostgreSQL::MapDatabasePostgreSQL(const std::string &connect_string):
+ 	MapDatabase()
+ {
+ 	connectToDatabase();
++
++	save_queue = new MapSaveQueue(m_async_conn);
++	save_queue->start();
+ }
+ 
++MapDatabasePostgreSQL::~MapDatabasePostgreSQL(){
++	save_queue->stop();
++	save_queue->wait();
++
++	delete save_queue;
++}
+ 
+ void MapDatabasePostgreSQL::createDatabase()
+ {
+@@ -185,67 +184,22 @@ void MapDatabasePostgreSQL::createDatabase()
+ 
+ void MapDatabasePostgreSQL::initStatements()
+ {
+-	prepareStatement("read_block",
++	PGUtil::prepareStatement(m_conn, "read_block",
+ 		"SELECT data FROM blocks "
+ 			"WHERE posX = $1::int4 AND posY = $2::int4 AND "
+ 			"posZ = $3::int4");
+ 
+-	if (getPGVersion() < 90500) {
+-		prepareStatement("write_block_insert",
+-			"INSERT INTO blocks (posX, posY, posZ, data) SELECT "
+-				"$1::int4, $2::int4, $3::int4, $4::bytea "
+-				"WHERE NOT EXISTS (SELECT true FROM blocks "
+-				"WHERE posX = $1::int4 AND posY = $2::int4 AND "
+-				"posZ = $3::int4)");
+-
+-		prepareStatement("write_block_update",
+-			"UPDATE blocks SET data = $4::bytea "
+-				"WHERE posX = $1::int4 AND posY = $2::int4 AND "
+-				"posZ = $3::int4");
+-	} else {
+-		prepareStatement("write_block",
+-			"INSERT INTO blocks (posX, posY, posZ, data) VALUES "
+-				"($1::int4, $2::int4, $3::int4, $4::bytea) "
+-				"ON CONFLICT ON CONSTRAINT blocks_pkey DO "
+-				"UPDATE SET data = $4::bytea");
+-	}
+-
+-	prepareStatement("delete_block", "DELETE FROM blocks WHERE "
++	PGUtil::prepareStatement(m_conn, "delete_block", "DELETE FROM blocks WHERE "
+ 		"posX = $1::int4 AND posY = $2::int4 AND posZ = $3::int4");
+ 
+-	prepareStatement("list_all_loadable_blocks",
++	PGUtil::prepareStatement(m_conn, "list_all_loadable_blocks",
+ 		"SELECT posX, posY, posZ FROM blocks");
+ }
+ 
+ bool MapDatabasePostgreSQL::saveBlock(const v3s16 &pos, const std::string &data)
+ {
+-	// Verify if we don't overflow the platform integer with the mapblock size
+-	if (data.size() > INT_MAX) {
+-		errorstream << "Database_PostgreSQL::saveBlock: Data truncation! "
+-			<< "data.size() over 0xFFFFFFFF (== " << data.size()
+-			<< ")" << std::endl;
+-		return false;
+-	}
+-
+-	verifyDatabase();
++	save_queue->enqueue(pos, data);
+ 
+-	s32 x, y, z;
+-	x = htonl(pos.X);
+-	y = htonl(pos.Y);
+-	z = htonl(pos.Z);
+-
+-	const void *args[] = { &x, &y, &z, data.c_str() };
+-	const int argLen[] = {
+-		sizeof(x), sizeof(y), sizeof(z), (int)data.size()
+-	};
+-	const int argFmt[] = { 1, 1, 1, 1 };
+-
+-	if (getPGVersion() < 90500) {
+-		execPrepared("write_block_update", ARRLEN(args), args, argLen, argFmt);
+-		execPrepared("write_block_insert", ARRLEN(args), args, argLen, argFmt);
+-	} else {
+-		execPrepared("write_block", ARRLEN(args), args, argLen, argFmt);
+-	}
+ 	return true;
+ }
+ 
+@@ -262,7 +216,7 @@ void MapDatabasePostgreSQL::loadBlock(const v3s16 &pos, std::string *block)
+ 	const int argLen[] = { sizeof(x), sizeof(y), sizeof(z) };
+ 	const int argFmt[] = { 1, 1, 1 };
+ 
+-	PGresult *results = execPrepared("read_block", ARRLEN(args), args,
++	PGresult *results = PGUtil::execPrepared(m_conn, "read_block", ARRLEN(args), args,
+ 		argLen, argFmt, false);
+ 
+ 	*block = "";
+@@ -286,7 +240,7 @@ bool MapDatabasePostgreSQL::deleteBlock(const v3s16 &pos)
+ 	const int argLen[] = { sizeof(x), sizeof(y), sizeof(z) };
+ 	const int argFmt[] = { 1, 1, 1 };
+ 
+-	execPrepared("delete_block", ARRLEN(args), args, argLen, argFmt);
++	PGUtil::execPrepared(m_conn, "delete_block", ARRLEN(args), args, argLen, argFmt);
+ 
+ 	return true;
+ }
+@@ -295,13 +249,13 @@ void MapDatabasePostgreSQL::listAllLoadableBlocks(std::vector<v3s16> &dst)
+ {
+ 	verifyDatabase();
+ 
+-	PGresult *results = execPrepared("list_all_loadable_blocks", 0,
++	PGresult *results = PGUtil::execPrepared(m_conn, "list_all_loadable_blocks", 0,
+ 		NULL, NULL, NULL, false, false);
+ 
+ 	int numrows = PQntuples(results);
+ 
+ 	for (int row = 0; row < numrows; ++row)
+-		dst.push_back(pg_to_v3s16(results, 0, 0));
++		dst.push_back(PGUtil::pg_to_v3s16(results, 0, 0));
+ 
+ 	PQclear(results);
+ }
+@@ -314,8 +268,13 @@ PlayerDatabasePostgreSQL::PlayerDatabasePostgreSQL(const std::string &connect_st
+ 	PlayerDatabase()
+ {
+ 	connectToDatabase();
++
++	save_queue = new PlayerSaveQueue(m_async_conn);
++	save_queue->start();
+ }
+ 
++PlayerDatabasePostgreSQL::~PlayerDatabasePostgreSQL(){
++}
+ 
+ void PlayerDatabasePostgreSQL::createDatabase()
+ {
+@@ -376,61 +335,25 @@ void PlayerDatabasePostgreSQL::createDatabase()
+ 
+ void PlayerDatabasePostgreSQL::initStatements()
+ {
+-	if (getPGVersion() < 90500) {
+-		prepareStatement("create_player",
+-			"INSERT INTO player(name, pitch, yaw, posX, posY, posZ, hp, breath) VALUES "
+-				"($1, $2, $3, $4, $5, $6, $7::int, $8::int)");
+-
+-		prepareStatement("update_player",
+-			"UPDATE SET pitch = $2, yaw = $3, posX = $4, posY = $5, posZ = $6, hp = $7::int, "
+-				"breath = $8::int, modification_date = NOW() WHERE name = $1");
+-	} else {
+-		prepareStatement("save_player",
+-			"INSERT INTO player(name, pitch, yaw, posX, posY, posZ, hp, breath) VALUES "
+-				"($1, $2, $3, $4, $5, $6, $7::int, $8::int)"
+-				"ON CONFLICT ON CONSTRAINT player_pkey DO UPDATE SET pitch = $2, yaw = $3, "
+-				"posX = $4, posY = $5, posZ = $6, hp = $7::int, breath = $8::int, "
+-				"modification_date = NOW()");
+-	}
+-
+-	prepareStatement("remove_player", "DELETE FROM player WHERE name = $1");
+-
+-	prepareStatement("load_player_list", "SELECT name FROM player");
+-
+-	prepareStatement("remove_player_inventories",
+-		"DELETE FROM player_inventories WHERE player = $1");
+-
+-	prepareStatement("remove_player_inventory_items",
+-		"DELETE FROM player_inventory_items WHERE player = $1");
++	PGUtil::prepareStatement(m_conn, "remove_player", "DELETE FROM player WHERE name = $1");
+ 
+-	prepareStatement("add_player_inventory",
+-		"INSERT INTO player_inventories (player, inv_id, inv_width, inv_name, inv_size) VALUES "
+-			"($1, $2::int, $3::int, $4, $5::int)");
++	PGUtil::prepareStatement(m_conn, "load_player_list", "SELECT name FROM player");
+ 
+-	prepareStatement("add_player_inventory_item",
+-		"INSERT INTO player_inventory_items (player, inv_id, slot_id, item) VALUES "
+-			"($1, $2::int, $3::int, $4)");
+-
+-	prepareStatement("load_player_inventories",
++	PGUtil::prepareStatement(m_conn, "load_player_inventories",
+ 		"SELECT inv_id, inv_width, inv_name, inv_size FROM player_inventories "
+ 			"WHERE player = $1 ORDER BY inv_id");
+ 
+-	prepareStatement("load_player_inventory_items",
++	PGUtil::prepareStatement(m_conn, "load_player_inventory_items",
+ 		"SELECT slot_id, item FROM player_inventory_items WHERE "
+ 			"player = $1 AND inv_id = $2::int");
+ 
+-	prepareStatement("load_player",
++	PGUtil::prepareStatement(m_conn, "load_player",
+ 		"SELECT pitch, yaw, posX, posY, posZ, hp, breath FROM player WHERE name = $1");
+ 
+-	prepareStatement("remove_player_metadata",
+-		"DELETE FROM player_metadata WHERE player = $1");
+-
+-	prepareStatement("save_player_metadata",
+-		"INSERT INTO player_metadata (player, attr, value) VALUES ($1, $2, $3)");
+-
+-	prepareStatement("load_player_metadata",
++	PGUtil::prepareStatement(m_conn, "load_player_metadata",
+ 		"SELECT attr, value FROM player_metadata WHERE player = $1");
+ 
++
+ }
+ 
+ bool PlayerDatabasePostgreSQL::playerDataExists(const std::string &playername)
+@@ -438,7 +361,7 @@ bool PlayerDatabasePostgreSQL::playerDataExists(const std::string &playername)
+ 	verifyDatabase();
+ 
+ 	const char *values[] = { playername.c_str() };
+-	PGresult *results = execPrepared("load_player", 1, values, false);
++	PGresult *results = PGUtil::execPrepared(m_conn, "load_player", 1, values, false);
+ 
+ 	bool res = (PQntuples(results) > 0);
+ 	PQclear(results);
+@@ -447,89 +370,15 @@ bool PlayerDatabasePostgreSQL::playerDataExists(const std::string &playername)
+ 
+ void PlayerDatabasePostgreSQL::savePlayer(RemotePlayer *player)
+ {
++
+ 	PlayerSAO* sao = player->getPlayerSAO();
+ 	if (!sao)
+ 		return;
+ 
+-	verifyDatabase();
+-
+-	v3f pos = sao->getBasePosition();
+-	std::string pitch = ftos(sao->getLookPitch());
+-	std::string yaw = ftos(sao->getRotation().Y);
+-	std::string posx = ftos(pos.X);
+-	std::string posy = ftos(pos.Y);
+-	std::string posz = ftos(pos.Z);
+-	std::string hp = itos(sao->getHP());
+-	std::string breath = itos(sao->getBreath());
+-	const char *values[] = {
+-		player->getName(),
+-		pitch.c_str(),
+-		yaw.c_str(),
+-		posx.c_str(), posy.c_str(), posz.c_str(),
+-		hp.c_str(),
+-		breath.c_str()
+-	};
+-
+-	const char* rmvalues[] = { player->getName() };
+-	beginSave();
+-
+-	if (getPGVersion() < 90500) {
+-		if (!playerDataExists(player->getName()))
+-			execPrepared("create_player", 8, values, true, false);
+-		else
+-			execPrepared("update_player", 8, values, true, false);
+-	}
+-	else
+-		execPrepared("save_player", 8, values, true, false);
+-
+-	// Write player inventories
+-	execPrepared("remove_player_inventories", 1, rmvalues);
+-	execPrepared("remove_player_inventory_items", 1, rmvalues);
+-
+-	std::vector<const InventoryList*> inventory_lists = sao->getInventory()->getLists();
+-	for (u16 i = 0; i < inventory_lists.size(); i++) {
+-		const InventoryList* list = inventory_lists[i];
+-		const std::string &name = list->getName();
+-		std::string width = itos(list->getWidth()),
+-			inv_id = itos(i), lsize = itos(list->getSize());
+-
+-		const char* inv_values[] = {
+-			player->getName(),
+-			inv_id.c_str(),
+-			width.c_str(),
+-			name.c_str(),
+-			lsize.c_str()
+-		};
+-		execPrepared("add_player_inventory", 5, inv_values);
+-
+-		for (u32 j = 0; j < list->getSize(); j++) {
+-			std::ostringstream os;
+-			list->getItem(j).serialize(os);
+-			std::string itemStr = os.str(), slotId = itos(j);
+-
+-			const char* invitem_values[] = {
+-				player->getName(),
+-				inv_id.c_str(),
+-				slotId.c_str(),
+-				itemStr.c_str()
+-			};
+-			execPrepared("add_player_inventory_item", 4, invitem_values);
+-		}
+-	}
+-
+-	execPrepared("remove_player_metadata", 1, rmvalues);
+-	const StringMap &attrs = sao->getMeta().getStrings();
+-	for (const auto &attr : attrs) {
+-		const char *meta_values[] = {
+-			player->getName(),
+-			attr.first.c_str(),
+-			attr.second.c_str()
+-		};
+-		execPrepared("save_player_metadata", 3, meta_values);
+-	}
+-	endSave();
++	save_queue->enqueue(player);
+ 
+ 	player->onSuccessfulSave();
++
+ }
+ 
+ bool PlayerDatabasePostgreSQL::loadPlayer(RemotePlayer *player, PlayerSAO *sao)
+@@ -538,7 +387,7 @@ bool PlayerDatabasePostgreSQL::loadPlayer(RemotePlayer *player, PlayerSAO *sao)
+ 	verifyDatabase();
+ 
+ 	const char *values[] = { player->getName() };
+-	PGresult *results = execPrepared("load_player", 1, values, false, false);
++	PGresult *results = PGUtil::execPrepared(m_conn, "load_player", 1, values, false, false);
+ 
+ 	// Player not found, return not found
+ 	if (!PQntuples(results)) {
+@@ -546,36 +395,36 @@ bool PlayerDatabasePostgreSQL::loadPlayer(RemotePlayer *player, PlayerSAO *sao)
+ 		return false;
+ 	}
+ 
+-	sao->setLookPitch(pg_to_float(results, 0, 0));
+-	sao->setRotation(v3f(0, pg_to_float(results, 0, 1), 0));
++	sao->setLookPitch(PGUtil::pg_to_float(results, 0, 0));
++	sao->setRotation(v3f(0, PGUtil::pg_to_float(results, 0, 1), 0));
+ 	sao->setBasePosition(v3f(
+-		pg_to_float(results, 0, 2),
+-		pg_to_float(results, 0, 3),
+-		pg_to_float(results, 0, 4))
++		PGUtil::pg_to_float(results, 0, 2),
++		PGUtil::pg_to_float(results, 0, 3),
++		PGUtil::pg_to_float(results, 0, 4))
+ 	);
+-	sao->setHPRaw((u16) pg_to_int(results, 0, 5));
+-	sao->setBreath((u16) pg_to_int(results, 0, 6), false);
++	sao->setHPRaw((u16) PGUtil::pg_to_int(results, 0, 5));
++	sao->setBreath((u16) PGUtil::pg_to_int(results, 0, 6), false);
+ 
+ 	PQclear(results);
+ 
+ 	// Load inventory
+-	results = execPrepared("load_player_inventories", 1, values, false, false);
++	results = PGUtil::execPrepared(m_conn, "load_player_inventories", 1, values, false, false);
+ 
+ 	int resultCount = PQntuples(results);
+ 
+ 	for (int row = 0; row < resultCount; ++row) {
+ 		InventoryList* invList = player->inventory.
+-			addList(PQgetvalue(results, row, 2), pg_to_uint(results, row, 3));
+-		invList->setWidth(pg_to_uint(results, row, 1));
++			addList(PQgetvalue(results, row, 2), PGUtil::pg_to_uint(results, row, 3));
++		invList->setWidth(PGUtil::pg_to_uint(results, row, 1));
+ 
+-		u32 invId = pg_to_uint(results, row, 0);
++		u32 invId = PGUtil::pg_to_uint(results, row, 0);
+ 		std::string invIdStr = itos(invId);
+ 
+ 		const char* values2[] = {
+ 			player->getName(),
+ 			invIdStr.c_str()
+ 		};
+-		PGresult *results2 = execPrepared("load_player_inventory_items", 2,
++		PGresult *results2 = PGUtil::execPrepared(m_conn, "load_player_inventory_items", 2,
+ 			values2, false, false);
+ 
+ 		int resultCount2 = PQntuples(results2);
+@@ -584,7 +433,7 @@ bool PlayerDatabasePostgreSQL::loadPlayer(RemotePlayer *player, PlayerSAO *sao)
+ 			if (itemStr.length() > 0) {
+ 				ItemStack stack;
+ 				stack.deSerialize(itemStr);
+-				invList->changeItem(pg_to_uint(results2, row2, 0), stack);
++				invList->changeItem(PGUtil::pg_to_uint(results2, row2, 0), stack);
+ 			}
+ 		}
+ 		PQclear(results2);
+@@ -592,7 +441,7 @@ bool PlayerDatabasePostgreSQL::loadPlayer(RemotePlayer *player, PlayerSAO *sao)
+ 
+ 	PQclear(results);
+ 
+-	results = execPrepared("load_player_metadata", 1, values, false);
++	results = PGUtil::execPrepared(m_conn, "load_player_metadata", 1, values, false);
+ 
+ 	int numrows = PQntuples(results);
+ 	for (int row = 0; row < numrows; row++) {
+@@ -613,7 +462,7 @@ bool PlayerDatabasePostgreSQL::removePlayer(const std::string &name)
+ 	verifyDatabase();
+ 
+ 	const char *values[] = { name.c_str() };
+-	execPrepared("remove_player", 1, values);
++	PGUtil::execPrepared(m_conn, "remove_player", 1, values);
+ 
+ 	return true;
+ }
+@@ -622,7 +471,7 @@ void PlayerDatabasePostgreSQL::listPlayers(std::vector<std::string> &res)
+ {
+ 	verifyDatabase();
+ 
+-	PGresult *results = execPrepared("load_player_list", 0, NULL, false);
++	PGresult *results = PGUtil::execPrepared(m_conn, "load_player_list", 0, NULL, false);
+ 
+ 	int numrows = PQntuples(results);
+ 	for (int row = 0; row < numrows; row++)
+diff --git a/src/database/database-postgresql.h b/src/database/database-postgresql.h
+index db0b505c..6ae2ad4d 100644
+--- a/src/database/database-postgresql.h
++++ b/src/database/database-postgresql.h
+@@ -23,6 +23,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
+ #include <libpq-fe.h>
+ #include "database.h"
+ #include "util/basic_macros.h"
++#include "postgres/mapsavequeue.h"
++#include "postgres/playersavequeue.h"
++#include "postgres/pgutil.h"
+ 
+ class Settings;
+ 
+@@ -39,47 +42,6 @@ class Database_PostgreSQL: public Database
+ 
+ 
+ protected:
+-	// Conversion helpers
+-	inline int pg_to_int(PGresult *res, int row, int col)
+-	{
+-		return atoi(PQgetvalue(res, row, col));
+-	}
+-
+-	inline u32 pg_to_uint(PGresult *res, int row, int col)
+-	{
+-		return (u32) atoi(PQgetvalue(res, row, col));
+-	}
+-
+-	inline float pg_to_float(PGresult *res, int row, int col)
+-	{
+-		return (float) atof(PQgetvalue(res, row, col));
+-	}
+-
+-	inline v3s16 pg_to_v3s16(PGresult *res, int row, int col)
+-	{
+-		return v3s16(
+-			pg_to_int(res, row, col),
+-			pg_to_int(res, row, col + 1),
+-			pg_to_int(res, row, col + 2)
+-		);
+-	}
+-
+-	inline PGresult *execPrepared(const char *stmtName, const int paramsNumber,
+-		const void **params,
+-		const int *paramsLengths = NULL, const int *paramsFormats = NULL,
+-		bool clear = true, bool nobinary = true)
+-	{
+-		return checkResults(PQexecPrepared(m_conn, stmtName, paramsNumber,
+-			(const char* const*) params, paramsLengths, paramsFormats,
+-			nobinary ? 1 : 0), clear);
+-	}
+-
+-	inline PGresult *execPrepared(const char *stmtName, const int paramsNumber,
+-		const char **params, bool clear = true, bool nobinary = true)
+-	{
+-		return execPrepared(stmtName, paramsNumber,
+-			(const void **)params, NULL, NULL, clear, nobinary);
+-	}
+ 
+ 	void createTableIfNotExists(const std::string &table_name, const std::string &definition);
+ 	void verifyDatabase();
+@@ -88,59 +50,65 @@ class Database_PostgreSQL: public Database
+ 	void connectToDatabase();
+ 	virtual void createDatabase() = 0;
+ 	virtual void initStatements() = 0;
+-	inline void prepareStatement(const std::string &name, const std::string &sql)
+-	{
+-		checkResults(PQprepare(m_conn, name.c_str(), sql.c_str(), 0, NULL));
+-	}
+ 
+ 	const int getPGVersion() const { return m_pgversion; }
++
++	PGconn *m_async_conn = nullptr;
++	PGconn *m_conn = nullptr;
++
+ private:
+ 	// Database connectivity checks
+ 	void ping();
+ 
+-	// Database usage
+-	PGresult *checkResults(PGresult *res, bool clear = true);
+-
+ 	// Attributes
+ 	std::string m_connect_string;
+-	PGconn *m_conn = nullptr;
+ 	int m_pgversion = 0;
++
+ };
+ 
+ class MapDatabasePostgreSQL : private Database_PostgreSQL, public MapDatabase
+ {
+ public:
+ 	MapDatabasePostgreSQL(const std::string &connect_string);
+-	virtual ~MapDatabasePostgreSQL() = default;
++	~MapDatabasePostgreSQL();
+ 
+ 	bool saveBlock(const v3s16 &pos, const std::string &data);
+ 	void loadBlock(const v3s16 &pos, std::string *block);
+ 	bool deleteBlock(const v3s16 &pos);
+ 	void listAllLoadableBlocks(std::vector<v3s16> &dst);
+ 
+-	void beginSave() { Database_PostgreSQL::beginSave(); }
+-	void endSave() { Database_PostgreSQL::endSave(); }
++	// nothing to see here, move along...
++	void beginSave() {}
++	void endSave() {}
+ 
+ protected:
+ 	virtual void createDatabase();
+ 	virtual void initStatements();
++
++private:
++	MapSaveQueue *save_queue;
+ };
+ 
+ class PlayerDatabasePostgreSQL : private Database_PostgreSQL, public PlayerDatabase
+ {
+ public:
+ 	PlayerDatabasePostgreSQL(const std::string &connect_string);
+-	virtual ~PlayerDatabasePostgreSQL() = default;
++	~PlayerDatabasePostgreSQL();
+ 
+ 	void savePlayer(RemotePlayer *player);
+ 	bool loadPlayer(RemotePlayer *player, PlayerSAO *sao);
+ 	bool removePlayer(const std::string &name);
+ 	void listPlayers(std::vector<std::string> &res);
+ 
++	// nothing to see here, move along...
++	void beginSave() {}
++	void endSave() {}
++
+ protected:
+ 	virtual void createDatabase();
+ 	virtual void initStatements();
+ 
+ private:
+ 	bool playerDataExists(const std::string &playername);
++	PlayerSaveQueue* save_queue;
+ };
+diff --git a/src/database/postgres/mapsavequeue.cpp b/src/database/postgres/mapsavequeue.cpp
+new file mode 100644
+index 00000000..0cbef450
+--- /dev/null
++++ b/src/database/postgres/mapsavequeue.cpp
+@@ -0,0 +1,153 @@
++
++#include "config.h"
++
++#ifdef USE_POSTGRESQL
++
++#include "mapsavequeue.h"
++
++#include "log.h"
++#include "threading/mutex_auto_lock.h"
++#include "exceptions.h"
++
++#include <thread>
++#include <chrono>
++#include <list>
++#include "pgutil.h"
++
++MapSaveQueue::MapSaveQueue(PGconn *m_conn) :
++	Thread("map_save_queue"),
++	m_conn(m_conn) {
++
++	m_pgversion = PQserverVersion(m_conn);
++
++	if (m_pgversion < 90500) {
++		PGUtil::prepareStatement(m_conn, "write_block_insert",
++			"INSERT INTO blocks (posX, posY, posZ, data) SELECT "
++				"$1::int4, $2::int4, $3::int4, $4::bytea "
++				"WHERE NOT EXISTS (SELECT true FROM blocks "
++				"WHERE posX = $1::int4 AND posY = $2::int4 AND "
++				"posZ = $3::int4)");
++
++		PGUtil::prepareStatement(m_conn, "write_block_update",
++			"UPDATE blocks SET data = $4::bytea "
++				"WHERE posX = $1::int4 AND posY = $2::int4 AND "
++				"posZ = $3::int4");
++	} else {
++		PGUtil::prepareStatement(m_conn, "write_block",
++			"INSERT INTO blocks (posX, posY, posZ, data) VALUES "
++				"($1::int4, $2::int4, $3::int4, $4::bytea) "
++				"ON CONFLICT ON CONSTRAINT blocks_pkey DO "
++				"UPDATE SET data = $4::bytea");
++	}
++
++}
++
++MapSaveQueue::~MapSaveQueue(){}
++
++void *MapSaveQueue::run(){
++	std::vector<QueuedItem*> save_items;
++
++	while (!stopRequested()){
++		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
++
++		// move items over here
++		MutexAutoLock lock(m_mutex);
++		if (!queue.empty()){
++			save_items.swap(queue);
++		}
++
++		this->save(&save_items);
++		save_items.clear();
++	}
++
++
++	if (!queue.empty()){
++		//flush at exit
++		MutexAutoLock lock(m_mutex);
++		this->save(&queue);
++	}
++
++	return nullptr;
++}
++
++void MapSaveQueue::saveBlock(QueuedItem *item){
++	// Verify if we don't overflow the platform integer with the mapblock size
++	if (item->data.size() > INT_MAX) {
++		errorstream << "Database_PostgreSQL::saveBlock: Data truncation! "
++		<< "data.size() over 0xFFFFFFFF (== " << item->data.size()
++		<< ")" << std::endl;
++		throw DatabaseException(std::string(
++			"PostgreSQL database error: data truncation @ " +
++			std::to_string(item->pos.X) + "/" +
++			std::to_string(item->pos.Y) + "/" +
++			std::to_string(item->pos.Z)
++			)
++		);
++	}
++
++	if (PQstatus(m_conn) != CONNECTION_OK){
++		throw DatabaseException(std::string(
++			"PostgreSQL database error: ") +
++			PQerrorMessage(m_conn)
++		);
++	}
++
++	s32 x, y, z;
++	x = htonl(item->pos.X);
++	y = htonl(item->pos.Y);
++	z = htonl(item->pos.Z);
++
++	const void *args[] = { &x, &y, &z, item->data.c_str() };
++	const int argLen[] = {
++		sizeof(x), sizeof(y), sizeof(z), (int)(item->data.size())
++	};
++	const int argFmt[] = { 1, 1, 1, 1 };
++
++	if (m_pgversion < 90500) {
++		PGUtil::execPrepared(m_conn, "write_block_update", ARRLEN(args), args, argLen, argFmt);
++		PGUtil::execPrepared(m_conn, "write_block_insert", ARRLEN(args), args, argLen, argFmt);
++	} else {
++		PGUtil::execPrepared(m_conn, "write_block", ARRLEN(args), args, argLen, argFmt);
++	}
++
++}
++
++void MapSaveQueue::save(std::vector<QueuedItem*> *items){
++
++	try {
++		PGUtil::checkResults(PQexec(m_conn, "BEGIN;"));
++
++		for (QueuedItem* item: *items){
++			saveBlock(item);
++			delete item;
++		}
++
++		PGUtil::checkResults(PQexec(m_conn, "COMMIT;"));
++
++	} catch (std::exception &e) {
++		MutexAutoLock lock(m_exception_mutex);
++		m_async_exception = std::current_exception();
++		this->stop();
++
++	}
++}
++
++
++void MapSaveQueue::enqueue(const v3s16 &pos, const std::string &data){
++	{
++		MutexAutoLock lock(m_exception_mutex);
++		if (m_async_exception) {
++			std::rethrow_exception(m_async_exception);
++		}
++	}
++
++	MutexAutoLock lock(m_mutex);
++
++	QueuedItem *item = new QueuedItem();
++	item->pos = pos;
++	item->data = data;
++
++	queue.push_back(item);
++}
++
++#endif //USE_POSTGRESQL
+\ No newline at end of file
+diff --git a/src/database/postgres/mapsavequeue.h b/src/database/postgres/mapsavequeue.h
+new file mode 100644
+index 00000000..aadb8e60
+--- /dev/null
++++ b/src/database/postgres/mapsavequeue.h
+@@ -0,0 +1,67 @@
++/*
++Minetest
++Copyright (C) 2019 BuckarooBanzai/naturefreshmilk, Thomas Rudin <thomas@rudin.io>
++
++This program is free software; you can redistribute it and/or modify
++it under the terms of the GNU Lesser General Public License as published by
++the Free Software Foundation; either version 2.1 of the License, or
++(at your option) any later version.
++
++This program is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++GNU Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public License along
++with this program; if not, write to the Free Software Foundation, Inc.,
++51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++*/
++
++#pragma once
++
++#include <string>
++#include "database/database.h"
++#include "threading/thread.h"
++#include "irr_v3d.h"
++#include <libpq-fe.h>
++
++// for htonl()
++#ifdef _WIN32
++        // Without this some of the network functions are not found on mingw
++        #ifndef _WIN32_WINNT
++                #define _WIN32_WINNT 0x0501
++        #endif
++        #include <windows.h>
++        #include <winsock2.h>
++#else
++	#include <netinet/in.h>
++#endif
++
++
++struct QueuedItem {
++	v3s16 pos;
++	std::string data;
++};
++
++class MapSaveQueue : public Thread {
++public:
++	MapSaveQueue(PGconn *m_conn);
++	~MapSaveQueue();
++	void enqueue(const v3s16 &pos, const std::string &data);
++
++protected:
++	void *run();
++
++private:
++	PGconn *m_conn = nullptr;
++	std::exception_ptr m_async_exception;
++	int m_pgversion;
++	void save(std::vector<QueuedItem*> *items);
++	void saveBlock(QueuedItem *item);
++
++	std::mutex m_mutex;
++	std::mutex m_exception_mutex;
++
++	std::vector<QueuedItem*> queue;
++
++};
+diff --git a/src/database/postgres/pgutil.h b/src/database/postgres/pgutil.h
+new file mode 100644
+index 00000000..8010e873
+--- /dev/null
++++ b/src/database/postgres/pgutil.h
+@@ -0,0 +1,94 @@
++/*
++Minetest
++Copyright (C) 2019 BuckarooBanzai/naturefreshmilk, Thomas Rudin <thomas@rudin.io>
++
++This program is free software; you can redistribute it and/or modify
++it under the terms of the GNU Lesser General Public License as published by
++the Free Software Foundation; either version 2.1 of the License, or
++(at your option) any later version.
++
++This program is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++GNU Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public License along
++with this program; if not, write to the Free Software Foundation, Inc.,
++51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++*/
++#pragma once
++
++#include <libpq-fe.h>
++#include "irr_v3d.h"
++#include "exceptions.h"
++
++namespace PGUtil {
++
++	inline PGresult *checkResults(PGresult *result, bool clear = true)
++	{
++		ExecStatusType statusType = PQresultStatus(result);
++
++		switch (statusType) {
++		case PGRES_COMMAND_OK:
++		case PGRES_TUPLES_OK:
++			break;
++		case PGRES_FATAL_ERROR:
++		default:
++			throw DatabaseException(
++				std::string("PostgreSQL database error: ") +
++				PQresultErrorMessage(result));
++		}
++
++		if (clear)
++			PQclear(result);
++
++		return result;
++	}
++
++	inline void prepareStatement(PGconn *m_conn, const std::string &name, const std::string &sql)
++	{
++		checkResults(PQprepare(m_conn, name.c_str(), sql.c_str(), 0, NULL));
++	}
++
++	inline PGresult *execPrepared(PGconn *m_conn, const char *stmtName, const int paramsNumber,
++		const void **params,
++		const int *paramsLengths = NULL, const int *paramsFormats = NULL,
++		bool clear = true, bool nobinary = true) {
++
++		return checkResults(PQexecPrepared(m_conn, stmtName, paramsNumber,
++			(const char* const*) params, paramsLengths, paramsFormats,
++			nobinary ? 1 : 0), clear);
++	}
++
++	inline PGresult *execPrepared(PGconn *m_conn, const char *stmtName, const int paramsNumber,
++		const char **params, bool clear = true, bool nobinary = true) {
++		return execPrepared(m_conn, stmtName, paramsNumber,
++			(const void **)params, NULL, NULL, clear, nobinary);
++	}
++
++	// Conversion helpers
++	inline int pg_to_int(PGresult *res, int row, int col)
++	{
++		return atoi(PQgetvalue(res, row, col));
++	}
++
++	inline u32 pg_to_uint(PGresult *res, int row, int col)
++	{
++		return (u32) atoi(PQgetvalue(res, row, col));
++	}
++
++	inline float pg_to_float(PGresult *res, int row, int col)
++	{
++		return (float) atof(PQgetvalue(res, row, col));
++	}
++
++	inline v3s16 pg_to_v3s16(PGresult *res, int row, int col)
++	{
++		return v3s16(
++			pg_to_int(res, row, col),
++			pg_to_int(res, row, col + 1),
++			pg_to_int(res, row, col + 2)
++		);
++	}
++
++}
+\ No newline at end of file
+diff --git a/src/database/postgres/playersavequeue.cpp b/src/database/postgres/playersavequeue.cpp
+new file mode 100644
+index 00000000..b14349f3
+--- /dev/null
++++ b/src/database/postgres/playersavequeue.cpp
+@@ -0,0 +1,317 @@
++
++#include "config.h"
++
++#if USE_POSTGRESQL
++
++#include "playersavequeue.h"
++
++#include "log.h"
++#include "threading/mutex_auto_lock.h"
++#include "exceptions.h"
++#include "pgutil.h"
++#include "content_sao.h"
++
++#include <thread>
++#include <chrono>
++#include <list>
++
++
++/*
++Serialized player data
++*/
++
++SerializedPlayer::SerializedPlayer(RemotePlayer *player){
++	PlayerSAO* sao = player->getPlayerSAO();
++	v3f pos = sao->getBasePosition();
++
++	name = player->getName();
++	pitch = ftos(sao->getLookPitch());
++	yaw = ftos(sao->getRotation().Y);
++	posx = ftos(pos.X);
++	posy = ftos(pos.Y);
++	posz = ftos(pos.Z);
++	hp = itos(sao->getHP());
++	breath = itos(sao->getBreath());
++}
++
++void SerializedPlayer::persist(PGconn *m_conn, int pgversion){
++	const char *values[] = {
++		name.c_str(),
++		pitch.c_str(),
++		yaw.c_str(),
++		posx.c_str(), posy.c_str(), posz.c_str(),
++		hp.c_str(),
++		breath.c_str()
++	};
++
++	if (pgversion < 90500) {
++
++		const char *exists_values[] = { name.c_str() };
++		PGresult *exists_results = PGUtil::execPrepared(m_conn, "load_player", 1, exists_values, false);
++
++		bool player_exists = (PQntuples(exists_results) > 0);
++		PQclear(exists_results);
++
++		if (!player_exists)
++			PGUtil::execPrepared(m_conn, "create_player", 8, values, true, false);
++		else
++			PGUtil::execPrepared(m_conn, "update_player", 8, values, true, false);
++	} else {
++		PGUtil::execPrepared(m_conn, "save_player", 8, values, true, false);
++	}
++
++}
++
++std::string SerializedPlayer::getName(){
++	return name;
++}
++
++/*
++Serialized inventory data
++*/
++
++SerializedInventory::SerializedInventory(std::string player, std::string inv_id, const InventoryList* list){
++	this->player = player;
++	this->inv_id = inv_id;
++
++	name = list->getName();
++	width = itos(list->getWidth());
++	lsize = itos(list->getSize());
++}
++
++void SerializedInventory::persist(PGconn *m_conn){
++	const char* inv_values[] = {
++		player.c_str(),
++		inv_id.c_str(),
++		width.c_str(),
++		name.c_str(),
++		lsize.c_str()
++	};
++
++	PGUtil::execPrepared(m_conn, "add_player_inventory", 5, inv_values);
++}
++
++/*
++Serialized inventory item data
++*/
++
++SerializedInventoryItem::SerializedInventoryItem(std::string player, std::string inv_id, std::string slotId, std::string itemStr):
++	player(player), inv_id(inv_id), slotId(slotId), itemStr(itemStr)
++{}
++
++void SerializedInventoryItem::persist(PGconn *m_conn){
++	const char* invitem_values[] = {
++		player.c_str(),
++		inv_id.c_str(),
++		slotId.c_str(),
++		itemStr.c_str()
++	};
++	PGUtil::execPrepared(m_conn, "add_player_inventory_item", 4, invitem_values);
++}
++
++/*
++Serializes player metadata
++*/
++
++SerializedPlayerMetadata::SerializedPlayerMetadata(std::string player, std::string attr, std::string value):
++	player(player), attr(attr), value(value)
++{}
++
++void SerializedPlayerMetadata::persist(PGconn *m_conn){
++	const char *meta_values[] = {
++		player.c_str(),
++		attr.c_str(),
++		value.c_str()
++	};
++	PGUtil::execPrepared(m_conn, "save_player_metadata", 3, meta_values);
++}
++
++/*
++Save queue
++*/
++
++PlayerSaveQueue::PlayerSaveQueue(PGconn *m_conn) :
++	Thread("player_save_queue"),
++	m_conn(m_conn) {
++
++	m_pgversion = PQserverVersion(m_conn);
++
++	if (m_pgversion < 90500) {
++		PGUtil::prepareStatement(m_conn, "create_player",
++			"INSERT INTO player(name, pitch, yaw, posX, posY, posZ, hp, breath) VALUES "
++				"($1, $2, $3, $4, $5, $6, $7::int, $8::int)");
++
++		PGUtil::prepareStatement(m_conn, "update_player",
++			"UPDATE SET pitch = $2, yaw = $3, posX = $4, posY = $5, posZ = $6, hp = $7::int, "
++				"breath = $8::int, modification_date = NOW() WHERE name = $1");
++	} else {
++		PGUtil::prepareStatement(m_conn, "save_player",
++			"INSERT INTO player(name, pitch, yaw, posX, posY, posZ, hp, breath) VALUES "
++				"($1, $2, $3, $4, $5, $6, $7::int, $8::int)"
++				"ON CONFLICT ON CONSTRAINT player_pkey DO UPDATE SET pitch = $2, yaw = $3, "
++				"posX = $4, posY = $5, posZ = $6, hp = $7::int, breath = $8::int, "
++				"modification_date = NOW()");
++	}
++
++	PGUtil::prepareStatement(m_conn, "remove_player_inventories",
++		"DELETE FROM player_inventories WHERE player = $1");
++
++	PGUtil::prepareStatement(m_conn, "remove_player_inventory_items",
++		"DELETE FROM player_inventory_items WHERE player = $1");
++
++	PGUtil::prepareStatement(m_conn, "add_player_inventory",
++		"INSERT INTO player_inventories (player, inv_id, inv_width, inv_name, inv_size) VALUES "
++			"($1, $2::int, $3::int, $4, $5::int)");
++
++	PGUtil::prepareStatement(m_conn, "add_player_inventory_item",
++		"INSERT INTO player_inventory_items (player, inv_id, slot_id, item) VALUES "
++			"($1, $2::int, $3::int, $4)");
++
++	PGUtil::prepareStatement(m_conn, "remove_player_metadata",
++		"DELETE FROM player_metadata WHERE player = $1");
++
++	PGUtil::prepareStatement(m_conn, "save_player_metadata",
++		"INSERT INTO player_metadata (player, attr, value) VALUES ($1, $2, $3)");
++
++}
++
++PlayerSaveQueue::~PlayerSaveQueue(){
++}
++
++
++void PlayerSaveQueue::enqueue(RemotePlayer *player){
++	{
++		MutexAutoLock lock(m_exception_mutex);
++		if (m_async_exception) {
++			std::rethrow_exception(m_async_exception);
++		}
++	}
++
++	MutexAutoLock lock(m_mutex);
++
++	QueuedPlayerData *queued_data = new QueuedPlayerData;
++	queued_data->serialized_player = new SerializedPlayer(player);
++
++	std::string playername = player->getName();
++	PlayerSAO* sao = player->getPlayerSAO();
++
++	std::vector<const InventoryList*> inventory_lists = sao->getInventory()->getLists();
++	for (u16 i = 0; i < inventory_lists.size(); i++) {
++		const InventoryList* list = inventory_lists[i];
++		std::string inv_id = itos(i);
++
++		SerializedInventory* serialized_inv = new SerializedInventory(playername, inv_id, list);
++		queued_data->inventories.push_back(serialized_inv);
++
++
++		for (u32 j = 0; j < list->getSize(); j++) {
++			std::ostringstream os;
++			list->getItem(j).serialize(os);
++			std::string itemStr = os.str();
++			std::string slotId = itos(j);
++
++			SerializedInventoryItem *invItem = new SerializedInventoryItem(
++				playername,
++				inv_id,
++				slotId,
++				itemStr
++			);
++
++			queued_data->inventory_items.push_back(invItem);
++		}
++	}
++
++	const StringMap &attrs = sao->getMeta().getStrings();
++	for (const auto &attr : attrs) {
++
++		SerializedPlayerMetadata *metadata = new SerializedPlayerMetadata(
++			playername,
++			attr.first,
++			attr.second
++		);
++
++		queued_data->metadata.push_back(metadata);
++	}
++
++	queue.push_back(queued_data);
++}
++
++
++void *PlayerSaveQueue::run(){
++	std::vector<QueuedPlayerData*> save_items;
++
++	while (!stopRequested()){
++		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
++
++		{
++			// move items over here
++			MutexAutoLock lock(m_mutex);
++			if (!queue.empty()){
++				save_items.swap(queue);
++			}
++		}
++
++		this->save(&save_items);
++		save_items.clear();
++	}
++
++
++	if (!queue.empty()){
++		//flush at exit
++		MutexAutoLock lock(m_mutex);
++		this->save(&queue);
++	}
++
++	return nullptr;
++}
++
++void PlayerSaveQueue::save(std::vector<QueuedPlayerData*> *queue){
++	try {
++
++		for (QueuedPlayerData* item: *queue){
++			PGUtil::checkResults(PQexec(m_conn, "BEGIN;"));
++			savePlayer(item);
++			PGUtil::checkResults(PQexec(m_conn, "COMMIT;"));
++			delete item;
++		}
++
++
++	} catch (std::exception &e) {
++		MutexAutoLock lock(m_exception_mutex);
++		m_async_exception = std::current_exception();
++		this->stop();
++
++	}
++}
++
++void PlayerSaveQueue::savePlayer(QueuedPlayerData *item){
++
++	std::string playername = item->serialized_player->getName();
++	const char* rmvalues[] = { playername.c_str() };
++
++	item->serialized_player->persist(m_conn, m_pgversion);
++
++	// Write player inventories
++	PGUtil::execPrepared(m_conn, "remove_player_inventories", 1, rmvalues);
++	PGUtil::execPrepared(m_conn, "remove_player_inventory_items", 1, rmvalues);
++	PGUtil::execPrepared(m_conn, "remove_player_metadata", 1, rmvalues);
++
++	for (SerializedInventory *inv: item->inventories){
++		inv->persist(m_conn);
++		delete inv;
++	}
++
++	for (SerializedInventoryItem *invItem: item->inventory_items){
++		invItem->persist(m_conn);
++		delete invItem;
++	}
++
++	for (SerializedPlayerMetadata *metadata: item->metadata){
++		metadata->persist(m_conn);
++		delete metadata;
++	}
++
++	delete item->serialized_player;
++}
++
++#endif //USE_POSTGRESQL
+\ No newline at end of file
+diff --git a/src/database/postgres/playersavequeue.h b/src/database/postgres/playersavequeue.h
+new file mode 100644
+index 00000000..b60ed2c1
+--- /dev/null
++++ b/src/database/postgres/playersavequeue.h
+@@ -0,0 +1,109 @@
++/*
++Minetest
++Copyright (C) 2019 BuckarooBanzai/naturefreshmilk, Thomas Rudin <thomas@rudin.io>
++
++This program is free software; you can redistribute it and/or modify
++it under the terms of the GNU Lesser General Public License as published by
++the Free Software Foundation; either version 2.1 of the License, or
++(at your option) any later version.
++
++This program is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++GNU Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public License along
++with this program; if not, write to the Free Software Foundation, Inc.,
++51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++*/
++
++#pragma once
++
++#include <string>
++#include "database/database.h"
++#include "threading/thread.h"
++#include <libpq-fe.h>
++#include "remoteplayer.h"
++
++class SerializedPlayer {
++public:
++	SerializedPlayer(RemotePlayer *player);
++	void persist(PGconn *m_conn, int pgversion);
++	std::string getName();
++private:
++	std::string name;
++	std::string pitch;
++	std::string yaw;
++	std::string posx;
++	std::string posy;
++	std::string posz;
++	std::string hp;
++	std::string breath;
++};
++
++class SerializedInventory {
++public:
++	SerializedInventory(std::string player, std::string inv_id, const InventoryList* list);
++	void persist(PGconn *m_conn);
++private:
++	std::string player;
++	std::string inv_id;
++	std::string width;
++	std::string name;
++	std::string lsize;
++};
++
++class SerializedInventoryItem {
++public:
++	SerializedInventoryItem(std::string player, std::string inv_id, std::string slotId, std::string itemStr);
++	void persist(PGconn *m_conn);
++private:
++	std::string player;
++	std::string inv_id;
++	std::string slotId;
++	std::string itemStr;
++};
++
++class SerializedPlayerMetadata {
++public:
++	SerializedPlayerMetadata(std::string player, std::string attr, std::string value);
++	void persist(PGconn *m_conn);
++private:
++	std::string player;
++	std::string attr;
++	std::string value;
++	
++};
++
++struct QueuedPlayerData {
++	SerializedPlayer *serialized_player;
++	std::vector<SerializedInventory*> inventories;
++	std::vector<SerializedInventoryItem*> inventory_items;
++	std::vector<SerializedPlayerMetadata*> metadata;
++};
++
++
++class PlayerSaveQueue : public Thread {
++public:
++	PlayerSaveQueue(PGconn *m_conn);
++	~PlayerSaveQueue();
++	void enqueue(RemotePlayer *player);
++
++protected:
++	void *run();
++
++private:
++	std::exception_ptr m_async_exception;
++
++	int m_pgversion;
++
++	void save(std::vector<QueuedPlayerData*> *queue);
++	void savePlayer(QueuedPlayerData *playerdata);
++
++	PGconn *m_conn = nullptr;
++
++	std::mutex m_mutex;
++	std::mutex m_exception_mutex;
++
++	std::vector<QueuedPlayerData*> queue;
++};
