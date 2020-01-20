@@ -25,7 +25,6 @@ services:
 
 # Branches/Tags
 
-* 5.1.0
 * backport-5
-* stable
-* master
+* stable-5
+* latest
