@@ -3,7 +3,15 @@
 mkdir -p /crashlogs
 ulimit -c unlimited
 
-exec minetestserver --config /data/minetest.conf --world /data/world/ --quiet &
+minetestserver --config /data/minetest.conf --world /data/world/ --quiet &
+
+exit_script() {
+        kill $(jobs -p)
+}
+
+trap exit_script SIGINT SIGTERM
+
+sleep inf
 
 
 DATE_FMT=`date +"%Y-%m-%d_%H-%M"`
