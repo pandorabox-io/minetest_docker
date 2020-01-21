@@ -4,14 +4,16 @@ mkdir -p /crashlogs
 ulimit -c unlimited
 
 minetestserver --config /data/minetest.conf --world /data/world/ --quiet &
+pid=$!
 
 exit_script() {
-        kill $(jobs -p)
+        kill $pid
 }
 
 trap exit_script SIGINT SIGTERM
 
-sleep inf
+sleep inf &
+wait
 
 
 DATE_FMT=`date +"%Y-%m-%d_%H-%M"`
