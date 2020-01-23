@@ -6,13 +6,16 @@ ulimit -c unlimited
 minetestserver --config /data/minetest.conf --world /data/world/ --quiet &
 pid=$!
 
+sleep inf &
+sleep_pid=$!
+
 exit_script() {
         kill $pid
+	kill $sleep_pid
 }
 
 trap exit_script SIGINT SIGTERM
 
-sleep inf &
 wait
 
 
