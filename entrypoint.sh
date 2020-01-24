@@ -14,7 +14,8 @@ exit_script() {
 	kill $sleep_pid
 }
 
-trap exit_script SIGINT SIGTERM
+trap exit_script INT
+trap exit_script TERM
 
 wait
 
