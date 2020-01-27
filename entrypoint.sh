@@ -17,7 +17,7 @@ exit_script() {
 trap exit_script INT
 trap exit_script TERM
 
-wait
+wait $pid
 
 
 DATE_FMT=`date +"%Y-%m-%d_%H-%M"`
