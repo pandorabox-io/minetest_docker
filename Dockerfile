@@ -22,8 +22,14 @@ RUN cd /git && git clone --depth 1 ${ENGINE_REPO} -b ${ENGINE_BRANCH}
 
 RUN cd /git/minetest/ && rm -rf games/minetest_game && git clone --depth 1 ${GAME_REPO} games/minetest_game -b ${GAME_BRANCH}
 
-COPY patches/minetest_async_pg.patch /patches/minetest_async_pg.patch
+# apply patches
+COPY patches/* /patches/
+
+# async pg map and player save
 RUN cd /git/minetest && cat /patches/minetest_async_pg.patch | patch -p1
+
+# profiler expose: minetest.get_profiler_value(name)
+RUN cd /git/minetest && cat /patches/lua_profiler.patch | patch -p1
 
 RUN cd /git/minetest && cmake . \
 	-DCMAKE_INSTALL_PREFIX=/usr/local\
