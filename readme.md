@@ -8,6 +8,8 @@ minetest docker builder
 
 # Docker-compose
 
+Example config:
+
 ```yml
 version: "2"
 
@@ -22,6 +24,27 @@ services:
    - "./data/crashlogs:/crashlogs"
    - "./data/minetest/debug.txt:/root/.minetest/debug.txt"
 ```
+
+# Available patches
+
+In the `patches` folder
+
+## minetest_async_pg.patch
+
+Async postgres map- and player-insert/update (performance)
+
+## sendmove_null-check.patch
+
+Custom fix for https://github.com/minetest/minetest/issues/9387
+
+## lua_profiler.patch
+
+Exposes the engine profiler with `minetest.get_profiler_value()`
+
+## old_pandorabox.patch (deprecated)
+
+Async pg and various prometheus monitoring thing (don't use that one!)
+
 
 # Branches/Tags
 
