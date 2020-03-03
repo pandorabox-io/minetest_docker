@@ -10,12 +10,12 @@ jobs:
     - uses: actions/checkout@master
 
     - name: build
-      run: docker build -t buckaroobanzay/minetest:${{ github.ref }} .
+      run: docker build -t buckaroobanzay/minetest:${GITHUB_REF#refs/heads/} .
 
     - name: test
       run: ./test.sh
       env:
-        BRANCH: ${{ github.ref }}
+        BRANCH: ${GITHUB_REF#refs/heads/}
 
     - name: docker publish
       uses: elgohr/Publish-Docker-Github-Action@master
