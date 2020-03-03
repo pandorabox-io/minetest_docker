@@ -50,4 +50,5 @@ Async pg and various prometheus monitoring thing (don't use that one!)
 
 * backport-5
 * stable-5
-* latest
+* stable-5-debug
+* master
