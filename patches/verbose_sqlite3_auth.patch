@@ -7,7 +7,7 @@ index 1bacdfe6..8450826e 100644
  bool AuthDatabaseSQLite3::createAuth(AuthEntry &authEntry)
  {
 +	infostream << "Database_SQLite3: Creating auth for player: \""
-+		<< authEntry.name << "\"" << std:endl;
++		<< authEntry.name << "\"" << std::endl;
 +
  	beginSave();
  
