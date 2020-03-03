@@ -23,7 +23,7 @@ jobs:
         BRANCH: ${{ steps.extract_branch.outputs.branch }}
 
     - name: Dockerhub login
-      run: docker login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_PASSWORD }}
+      run: docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
 
     - name: Push image
       run: docker push buckaroobanzay/minetest:${{ steps.extract_branch.outputs.branch }}
