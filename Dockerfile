@@ -25,6 +25,9 @@ RUN cd /git/minetest/ && rm -rf games/minetest_game && git clone --depth 1 ${GAM
 # apply patches
 COPY patches/* /patches/
 
+# mtg coral place patch
+RUN cd /git/minetest/games/minetest_game && cat /patches/mtg_coral_place.patch | patch -p1
+
 # async pg map and player save
 RUN cd /git/minetest && cat /patches/minetest_async_pg.patch | patch -p1
 
@@ -32,7 +35,6 @@ RUN cd /git/minetest && cat /patches/minetest_async_pg.patch | patch -p1
 RUN cd /git/minetest && cat /patches/lua_profiler.patch | patch -p1
 
 # https://github.com/minetest/minetest/issues/9387
-#RUN cd /git/minetest && cat /patches/PlayerSAO-fix.patch | patch -p1
 RUN cd /git/minetest && cat /patches/sendmove_null-check.patch | patch -p1
 
 RUN cd /git/minetest && cmake . \
