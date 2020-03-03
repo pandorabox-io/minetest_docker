@@ -8,6 +8,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@master
+
+    - name: build
+      run: docker build -t buckaroobanzay/minetest:${{ github.ref }} .
+
+    - name: test
+      run: ./test.sh
+      env:
+        BRANCH: ${{ github.ref }}
+
     - name: docker publish
       uses: elgohr/Publish-Docker-Github-Action@master
       with:
