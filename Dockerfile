@@ -28,6 +28,9 @@ COPY patches/* /patches/
 # mtg coral place patch
 RUN cd /git/minetest/games/minetest_game && cat /patches/mtg_coral_place.patch | patch -p1
 
+# verbose sqlite3 patch, issue: https://github.com/pandorabox-io/pandorabox.io/issues/456
+RUN cd /git/minetest && cat /patches/verbose_sqlite3_auth.patch | patch -p1
+
 # async pg map and player save
 RUN cd /git/minetest && cat /patches/minetest_async_pg.patch | patch -p1
 

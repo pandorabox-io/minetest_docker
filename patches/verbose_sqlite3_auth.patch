@@ -1,0 +1,14 @@
+diff --git a/src/database/database-sqlite3.cpp b/src/database/database-sqlite3.cpp
+index 1bacdfe6..8450826e 100644
+--- a/src/database/database-sqlite3.cpp
++++ b/src/database/database-sqlite3.cpp
+@@ -713,6 +713,9 @@ bool AuthDatabaseSQLite3::saveAuth(const AuthEntry &authEntry)
+ 
+ bool AuthDatabaseSQLite3::createAuth(AuthEntry &authEntry)
+ {
++	infostream << "Database_SQLite3: Creating auth for player: \""
++		<< authEntry.name << "\"" << std:endl;
++
+ 	beginSave();
+ 
+ 	// id autoincrements
