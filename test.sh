@@ -2,6 +2,7 @@
 # simple integration test
 
 CFG=/tmp/minetest.conf
+MT_WORLD_DIR=/tmp/world
 
 cat <<EOF > ${CFG}
 # test config
@@ -9,7 +10,8 @@ EOF
 
 docker run --rm -i \
 	-v ${CFG}:/data/minetest.conf:ro \
+	-v ${MT_WORLD_DIR}:/data/world \
 	-v $(pwd)/test_mod:/data/world/worldmods/test_mod \
 	buckaroobanzay/minetest:${BRANCH}
 
-#test -f ${WORLDDIR}/integration_test.json && exit 0 || exit 1
+test -f ${MT_WORLD_DIR}/integration_test.json && exit 0 || exit 1
