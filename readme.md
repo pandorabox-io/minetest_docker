@@ -1,6 +1,7 @@
 
 minetest docker builder
 
+![docker](https://github.com/pandorabox-io/minetest_docker/workflows/docker/badge.svg)
 
 # Images
 
@@ -48,7 +49,5 @@ Async pg and various prometheus monitoring thing (don't use that one!)
 
 # Branches/Tags
 
-* backport-5
 * stable-5
-* stable-5-debug
 * master
