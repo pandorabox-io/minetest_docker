@@ -11,7 +11,7 @@ jobs:
 
     - name: Extract branch name
       shell: bash
-      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr '/' '_')"
+      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | sed 's/.*\///')"
       id: extract_branch
 
     - name: build image
