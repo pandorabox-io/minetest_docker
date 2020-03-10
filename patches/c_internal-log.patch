@@ -1,0 +1,23 @@
+diff --git a/src/script/common/c_internal.cpp b/src/script/common/c_internal.cpp
+index f792b621..2a398408 100644
+--- a/src/script/common/c_internal.cpp
++++ b/src/script/common/c_internal.cpp
+@@ -34,6 +34,13 @@ std::string script_get_backtrace(lua_State *L)
+ 
+ int script_exception_wrapper(lua_State *L, lua_CFunction f)
+ {
++	 u16 top = ((uintptr_t) f >> 63) ? 0xffff : 0;
++	 if ((uintptr_t) f >> 48 != top) {
++	         char buf[64];
++	         snprintf(buf, 64, "Attempted to call invalid address %p", f);
++	         lua_pushstring(L, buf);
++	         return lua_error(L);
++	 }
+ 	try {
+ 		return f(L);  // Call wrapped function and return result.
+ 	} catch (const char *s) {  // Catch and convert exceptions.
+@@ -172,4 +179,3 @@ void log_deprecated(lua_State *L, const std::string &message)
+ 		}
+ 	}
+ }
+-
