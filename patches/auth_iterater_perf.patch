@@ -59,10 +59,18 @@ index cb830a3e..67e95c76 100644
  
  private:
 diff --git a/src/database/database-sqlite3.cpp b/src/database/database-sqlite3.cpp
-index 1bacdfe6..792651d1 100644
+index 1bacdfe6..54f566bf 100644
 --- a/src/database/database-sqlite3.cpp
 +++ b/src/database/database-sqlite3.cpp
-@@ -663,6 +663,7 @@ void AuthDatabaseSQLite3::initStatements()
+@@ -624,6 +624,7 @@ AuthDatabaseSQLite3::~AuthDatabaseSQLite3()
+ 	FINALIZE_STATEMENT(m_stmt_create)
+ 	FINALIZE_STATEMENT(m_stmt_delete)
+ 	FINALIZE_STATEMENT(m_stmt_list_names)
++	FINALIZE_STATEMENT(m_stmt_list_names_like)
+ 	FINALIZE_STATEMENT(m_stmt_read_privs)
+ 	FINALIZE_STATEMENT(m_stmt_write_privs)
+ 	FINALIZE_STATEMENT(m_stmt_delete_privs)
+@@ -663,6 +664,7 @@ void AuthDatabaseSQLite3::initStatements()
  	PREPARE_STATEMENT(delete, "DELETE FROM auth WHERE name = ?");
  
  	PREPARE_STATEMENT(list_names, "SELECT name FROM auth ORDER BY name DESC");
@@ -70,7 +78,7 @@ index 1bacdfe6..792651d1 100644
  
  	PREPARE_STATEMENT(read_privs, "SELECT privilege FROM user_privileges WHERE id = ?");
  	PREPARE_STATEMENT(write_privs, "INSERT OR IGNORE INTO user_privileges (id, privilege) VALUES (?, ?)");
-@@ -757,6 +758,17 @@ void AuthDatabaseSQLite3::listNames(std::vector<std::string> &res)
+@@ -757,6 +759,17 @@ void AuthDatabaseSQLite3::listNames(std::vector<std::string> &res)
  	sqlite3_reset(m_stmt_list_names);
  }
  
@@ -78,11 +86,11 @@ index 1bacdfe6..792651d1 100644
 +{
 +	verifyDatabase();
 +
-+	str_to_sqlite(m_stmt_list_names, 1, name);
-+	while (sqlite3_step(m_stmt_list_names) == SQLITE_ROW) {
-+		res.push_back(sqlite_to_string(m_stmt_list_names, 0));
++	str_to_sqlite(m_stmt_list_names_like, 1, name);
++	while (sqlite3_step(m_stmt_list_names_like) == SQLITE_ROW) {
++		res.push_back(sqlite_to_string(m_stmt_list_names_like, 0));
 +	}
-+	sqlite3_reset(m_stmt_list_names);
++	sqlite3_reset(m_stmt_list_names_like);
 +}
 +
  void AuthDatabaseSQLite3::reload()
