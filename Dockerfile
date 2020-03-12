@@ -33,7 +33,7 @@ RUN cd /git/minetest && cat /patches/verbose_sqlite3_auth.patch | patch -p1
 RUN cd /git/minetest && cat /patches/minetest_auth_insert_race.patch | patch -p1
 
 # auth iterate performance patch
-#RUN cd /git/minetest && cat /patches/auth_iterater_perf.patch | patch -p1
+RUN cd /git/minetest && cat /patches/auth_iterater_perf.patch | patch -p1
 
 # c_internal log patch
 RUN cd /git/minetest && cat /patches/c_internal-log.patch | patch -p1
