@@ -1,4 +1,4 @@
-FROM ubuntu:19.10
+FROM ubuntu:20.04
 
 ENV LUAJIT_BRANCH=v2.1.0-beta3
 
@@ -73,7 +73,7 @@ RUN cd /git/minetest && cmake . \
  make install
 
 
-FROM ubuntu:19.10
+FROM ubuntu:20.04
 
 RUN groupadd minetest && useradd -m -g minetest -d /var/lib/minetest minetest && \
     apt-get update -y && \
