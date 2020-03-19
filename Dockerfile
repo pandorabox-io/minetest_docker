@@ -1,4 +1,5 @@
-FROM ubuntu:19.10
+# Stage 1 build
+FROM ubuntu:20.04
 
 ENV GAME_BRANCH=5.1.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
@@ -11,20 +12,22 @@ ENV ENGINE_REPO=https://github.com/minetest/minetest.git
 # Debug
 ENV ENGINE_BUILD_TYPE=Debug
 
+# Install dependencies
 # https://github.com/minetest/minetest
 RUN apt-get update &&\
  apt-get install -y build-essential libirrlicht-dev cmake libbz2-dev \
   libpng-dev libjpeg-dev libsqlite3-dev libcurl4-openssl-dev \
 	zlib1g-dev libgmp-dev libjsoncpp-dev git \
 	libjsoncpp-dev libgmp-dev postgresql-server-dev-all postgresql-client \
-  libspatialindex5 libspatialindex-dev \
-  libluajit-5.1-dev lua5.1
+  libspatialindex6 libspatialindex-dev \
+  libluajit-5.1-dev
 
 RUN mkdir /git
 
 # minetest
 RUN cd /git && git clone --depth 1 ${ENGINE_REPO} -b ${ENGINE_BRANCH}
 
+# minetest game
 RUN cd /git/minetest/ && rm -rf games/minetest_game && git clone --depth 1 ${GAME_REPO} games/minetest_game -b ${GAME_BRANCH}
 
 # apply patches
@@ -67,13 +70,13 @@ RUN cd /git/minetest && cmake . \
  make -j4 &&\
  make install
 
-
-FROM ubuntu:19.10
+# Stage 2 package
+FROM ubuntu:20.04
 
 RUN groupadd minetest && useradd -m -g minetest -d /var/lib/minetest minetest && \
     apt-get update -y && \
-    apt-get -y install libcurl4 libjsoncpp1 liblua5.1-0 libluajit-5.1-2 libpq5 libsqlite3-0 \
-        libstdc++6 zlib1g libc6 libspatialindex5 libpq5 postgresql-client
+    apt-get -y install libcurl4 libjsoncpp1 libluajit-5.1-2 libpq5 libsqlite3-0 \
+        libstdc++6 zlib1g libc6 libspatialindex6 libpq5 postgresql-client
 
 WORKDIR /data
 
