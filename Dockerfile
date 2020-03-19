@@ -5,8 +5,11 @@ ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
 ENV ENGINE_BRANCH=stable-5
 ENV ENGINE_REPO=https://github.com/minetest/minetest.git
-ENV ENGINE_BUILD_TYPE=RelWithDebInfo
-#ENV ENGINE_BUILD_TYPE=Release
+
+# RelWithDebInfo
+# Release
+# Debug
+ENV ENGINE_BUILD_TYPE=Debug
 
 # https://github.com/minetest/minetest
 RUN apt-get update &&\
