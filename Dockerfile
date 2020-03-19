@@ -1,7 +1,5 @@
 FROM ubuntu:19.10
 
-ENV LUAJIT_BRANCH=v2.1.0-beta3
-
 ENV GAME_BRANCH=5.1.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
@@ -12,19 +10,14 @@ ENV ENGINE_BUILD_TYPE=RelWithDebInfo
 
 # https://github.com/minetest/minetest
 RUN apt-get update &&\
- apt-get install -y build-essential libirrlicht-dev cmake libbz2-dev libpng-dev libjpeg-dev libsqlite3-dev libcurl4-openssl-dev \
+ apt-get install -y build-essential libirrlicht-dev cmake libbz2-dev \
+  libpng-dev libjpeg-dev libsqlite3-dev libcurl4-openssl-dev \
 	zlib1g-dev libgmp-dev libjsoncpp-dev git \
-	libjsoncpp-dev libgmp-dev postgresql-server-dev-all postgresql-client libspatialindex5 libspatialindex-dev
+	libjsoncpp-dev libgmp-dev postgresql-server-dev-all postgresql-client \
+  libspatialindex5 libspatialindex-dev \
+  libluajit-5.1-dev lua5.1
 
 RUN mkdir /git
-
-# luajit
-RUN cd /git &&\
-	git clone https://luajit.org/git/luajit-2.0.git -b ${LUAJIT_BRANCH} &&\
-	cd luajit-2.0 &&\
-	make CCDEBUG=-g &&\
-	make install
-
 
 # minetest
 RUN cd /git && git clone --depth 1 ${ENGINE_REPO} -b ${ENGINE_BRANCH}
