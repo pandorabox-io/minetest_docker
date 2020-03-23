@@ -20,7 +20,7 @@ RUN apt-get update &&\
 	zlib1g-dev libgmp-dev libjsoncpp-dev git \
 	libjsoncpp-dev libgmp-dev postgresql-server-dev-all postgresql-client \
   libspatialindex6 libspatialindex-dev \
-  libluajit-5.1-dev
+  libluajit-5.1-dev lua5.1
 
 RUN mkdir /git
 
@@ -75,7 +75,7 @@ FROM ubuntu:20.04
 
 RUN groupadd minetest && useradd -m -g minetest -d /var/lib/minetest minetest && \
     apt-get update -y && \
-    apt-get -y install libcurl4 libjsoncpp1 libluajit-5.1-2 libpq5 libsqlite3-0 \
+    apt-get -y install libcurl4 libjsoncpp1 libluajit-5.1-2 liblua5.1-0 libpq5 libsqlite3-0 \
         libstdc++6 zlib1g libc6 libspatialindex6 libpq5 postgresql-client
 
 WORKDIR /data
