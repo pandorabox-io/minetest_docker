@@ -42,6 +42,9 @@ RUN cd /git/minetest/games/minetest_game && cat /patches/mtg_coral_place.patch |
 # sqlite3 patch, issue: https://github.com/pandorabox-io/pandorabox.io/issues/456
 RUN cd /git/minetest && cat /patches/minetest_auth_insert_race.patch | patch -p1
 
+# debug mode deadlock patch
+RUN cd /git/minetest && cat /patches/debug_deadlock.patch | patch -p1
+
 # auth iterate performance patch
 RUN cd /git/minetest && cat /patches/auth_iterater_perf.patch | patch -p1
 
