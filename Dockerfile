@@ -12,6 +12,9 @@ ENV ENGINE_REPO=https://github.com/minetest/minetest.git
 # Debug
 ENV ENGINE_BUILD_TYPE=Debug
 
+# tzdata issue: https://serverfault.com/questions/949991/how-to-install-tzdata-on-a-ubuntu-docker-image
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install dependencies
 # https://github.com/minetest/minetest
 RUN apt-get update &&\
