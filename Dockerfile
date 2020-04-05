@@ -1,10 +1,10 @@
 # Stage 1 build
 FROM ubuntu:20.04
 
-ENV GAME_BRANCH=5.1.0
+ENV GAME_BRANCH=5.2.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=stable-5
+ENV ENGINE_BRANCH=5.2.0
 ENV ENGINE_REPO=https://github.com/minetest/minetest.git
 
 # RelWithDebInfo
@@ -36,14 +36,8 @@ RUN cd /git/minetest/ && rm -rf games/minetest_game && git clone --depth 1 ${GAM
 # apply patches
 COPY patches/* /patches/
 
-# mtg coral place patch
-RUN cd /git/minetest/games/minetest_game && cat /patches/mtg_coral_place.patch | patch -p1
-
 # sqlite3 patch, issue: https://github.com/pandorabox-io/pandorabox.io/issues/456
 RUN cd /git/minetest && cat /patches/minetest_auth_insert_race.patch | patch -p1
-
-# debug mode deadlock patch
-RUN cd /git/minetest && cat /patches/debug_deadlock.patch | patch -p1
 
 # auth iterate performance patch
 RUN cd /git/minetest && cat /patches/auth_iterater_perf.patch | patch -p1
@@ -56,9 +50,6 @@ RUN cd /git/minetest && cat /patches/minetest_async_pg.patch | patch -p1
 
 # profiler expose: minetest.get_profiler_value(name)
 RUN cd /git/minetest && cat /patches/lua_profiler.patch | patch -p1
-
-# https://github.com/minetest/minetest/issues/9387
-RUN cd /git/minetest && cat /patches/sendmove_null-check.patch | patch -p1
 
 RUN cd /git/minetest && cmake . \
 	-DCMAKE_INSTALL_PREFIX=/usr/local\
