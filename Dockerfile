@@ -36,6 +36,9 @@ RUN cd /git/minetest/ && rm -rf games/minetest_game && git clone --depth 1 ${GAM
 # apply patches
 COPY patches/* /patches/
 
+# https://github.com/minetest/minetest_game/commit/c1f41720fc3ba7b69e091326f1ce2ac69588fb13
+RUN cd /git/minetest/games/minetest_game && cat /patches/game_tnt_crash.patch | patch -p1
+
 # sqlite3 patch, issue: https://github.com/pandorabox-io/pandorabox.io/issues/456
 RUN cd /git/minetest && cat /patches/minetest_auth_insert_race.patch | patch -p1
 
