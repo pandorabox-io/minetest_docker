@@ -10,7 +10,7 @@ ENV ENGINE_REPO=https://github.com/minetest/minetest.git
 # RelWithDebInfo
 # Release
 # Debug
-ENV ENGINE_BUILD_TYPE=Release
+ENV ENGINE_BUILD_TYPE=RelWithDebInfo
 
 # tzdata issue: https://serverfault.com/questions/949991/how-to-install-tzdata-on-a-ubuntu-docker-image
 ENV DEBIAN_FRONTEND=noninteractive
