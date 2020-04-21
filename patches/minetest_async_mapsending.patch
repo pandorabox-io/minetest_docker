@@ -1,5 +1,5 @@
 diff --git a/src/server.cpp b/src/server.cpp
-index 239ddd92..976ee19d 100644
+index 239ddd92..22a0e42a 100644
 --- a/src/server.cpp
 +++ b/src/server.cpp
 @@ -241,6 +241,8 @@ Server::Server(
@@ -19,45 +19,28 @@ index 239ddd92..976ee19d 100644
  	}
  
  	// Delete things in the reverse order of creation
-@@ -2402,6 +2405,8 @@ void Server::SendBlocks(float dtime)
- 	ScopeProfiler sp(g_profiler, "Server::SendBlocks(): Send to clients");
- 	Map &map = m_env->getMap();
- 
-+	std::vector<std::future<void>*> futures;
-+
- 	for (const PrioritySortedBlockTransfer &block_to_send : queue) {
- 		if (total_sending >= max_blocks_to_send)
- 			break;
-@@ -2415,12 +2420,32 @@ void Server::SendBlocks(float dtime)
+@@ -2415,12 +2418,24 @@ void Server::SendBlocks(float dtime)
  		if (!client)
  			continue;
  
 -		SendBlockNoLock(block_to_send.peer_id, block, client->serialization_version,
 -				client->net_proto_version);
-+		std::future<void> f = m_threadpool->enqueue(
-+			[this](int peer_id, MapBlock* block, int s_ver, int p_ver){
++		m_threadpool->enqueue(
++			[this, block_to_send, block, client](){
 +			SendBlockNoLock(
-+				peer_id,
++				block_to_send.peer_id,
 +				block,
-+				s_ver,
-+				p_ver
++				client->serialization_version,
++				client->net_proto_version
 +			);
-+		},
-+			block_to_send.peer_id,
-+			block,
-+			client->serialization_version,
-+			client->net_proto_version
-+		);
-+
-+		futures.push_back(&f);
++		});
  
  		client->SentBlock(block_to_send.pos);
  		total_sending++;
  	}
 +
-+	for (std::future<void>* f : futures){
-+		if (f->valid())
-+			f->get();
++	while (!m_threadpool->empty()){
++		sleep_ms(1);
 +	}
 +
  	m_clients.unlock();
@@ -87,10 +70,10 @@ index 680de57b..39920237 100644
  	*/
 diff --git a/src/util/ThreadPool.h b/src/util/ThreadPool.h
 new file mode 100644
-index 00000000..3f3bd8c4
+index 00000000..bedb00cc
 --- /dev/null
 +++ b/src/util/ThreadPool.h
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,103 @@
 +#ifndef THREAD_POOL_H
 +#define THREAD_POOL_H
 +
@@ -108,21 +91,22 @@ index 00000000..3f3bd8c4
 +public:
 +    ThreadPool(size_t);
 +    template<class F, class... Args>
-+    auto enqueue(F&& f, Args&&... args) 
++    auto enqueue(F&& f, Args&&... args)
 +        -> std::future<typename std::result_of<F(Args...)>::type>;
 +    ~ThreadPool();
++		bool empty();
 +private:
 +    // need to keep track of threads so we can join them
 +    std::vector< std::thread > workers;
 +    // the task queue
 +    std::queue< std::function<void()> > tasks;
-+    
++
 +    // synchronization
 +    std::mutex queue_mutex;
 +    std::condition_variable condition;
 +    bool stop;
 +};
-+ 
++
 +// the constructor just launches some amount of workers
 +inline ThreadPool::ThreadPool(size_t threads)
 +    :   stop(false)
@@ -153,7 +137,7 @@ index 00000000..3f3bd8c4
 +
 +// add new work item to the pool
 +template<class F, class... Args>
-+auto ThreadPool::enqueue(F&& f, Args&&... args) 
++auto ThreadPool::enqueue(F&& f, Args&&... args)
 +    -> std::future<typename std::result_of<F(Args...)>::type>
 +{
 +    using return_type = typename std::result_of<F(Args...)>::type;
@@ -161,7 +145,7 @@ index 00000000..3f3bd8c4
 +    auto task = std::make_shared< std::packaged_task<return_type()> >(
 +            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
 +        );
-+        
++
 +    std::future<return_type> res = task->get_future();
 +    {
 +        std::unique_lock<std::mutex> lock(queue_mutex);
@@ -174,6 +158,10 @@ index 00000000..3f3bd8c4
 +    }
 +    condition.notify_one();
 +    return res;
++}
++
++inline bool ThreadPool::empty() {
++	return this->tasks.empty();
 +}
 +
 +// the destructor joins all threads
@@ -189,4 +177,3 @@ index 00000000..3f3bd8c4
 +}
 +
 +#endif
-+
