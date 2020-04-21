@@ -45,6 +45,9 @@ RUN cd /git/minetest && cat /patches/minetest_auth_insert_race.patch | patch -p1
 # auth iterate performance patch
 RUN cd /git/minetest && cat /patches/auth_iterater_perf.patch | patch -p1
 
+# async map sending with a threadpool
+RUN cd /git/minetest && cat /patches/minetest_async_mapsending.patch | patch -p1
+
 # async pg map and player save
 RUN cd /git/minetest && cat /patches/minetest_async_pg.patch | patch -p1
 

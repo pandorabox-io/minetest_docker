@@ -1,0 +1,191 @@
+diff --git a/src/server.cpp b/src/server.cpp
+index 239ddd92..7c6080e6 100644
+--- a/src/server.cpp
++++ b/src/server.cpp
+@@ -241,6 +241,8 @@ Server::Server(
+ 
+ 	if (!gamespec.isValid())
+ 		throw ServerError("Supplied invalid gamespec");
++
++	m_threadpool = new ThreadPool(4);
+ }
+ 
+ Server::~Server()
+@@ -295,6 +297,7 @@ Server::~Server()
+ 	if (m_thread) {
+ 		stop();
+ 		delete m_thread;
++		delete m_threadpool;
+ 	}
+ 
+ 	// Delete things in the reverse order of creation
+@@ -2402,6 +2405,8 @@ void Server::SendBlocks(float dtime)
+ 	ScopeProfiler sp(g_profiler, "Server::SendBlocks(): Send to clients");
+ 	Map &map = m_env->getMap();
+ 
++	std::vector<std::future<void>*> futures;
++
+ 	for (const PrioritySortedBlockTransfer &block_to_send : queue) {
+ 		if (total_sending >= max_blocks_to_send)
+ 			break;
+@@ -2415,12 +2420,31 @@ void Server::SendBlocks(float dtime)
+ 		if (!client)
+ 			continue;
+ 
+-		SendBlockNoLock(block_to_send.peer_id, block, client->serialization_version,
+-				client->net_proto_version);
++		std::future<void> f = m_threadpool->enqueue(
++			[this](int peer_id, MapBlock* block, int s_ver, int p_ver){
++			SendBlockNoLock(
++				peer_id,
++				block,
++				s_ver,
++				p_ver
++			);
++		},
++			block_to_send.peer_id,
++			block,
++			client->serialization_version,
++			client->net_proto_version
++		);
++
++		futures.push_back(&f);
+ 
+ 		client->SentBlock(block_to_send.pos);
+ 		total_sending++;
+ 	}
++
++	for (std::future<void>* f : futures){
++		f->get();
++	}
++
+ 	m_clients.unlock();
+ }
+ 
+diff --git a/src/server.h b/src/server.h
+index 680de57b..39920237 100644
+--- a/src/server.h
++++ b/src/server.h
+@@ -40,6 +40,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
+ #include <list>
+ #include <map>
+ #include <vector>
++#include "util/ThreadPool.h"
+ 
+ class ChatEvent;
+ struct ChatEventChat;
+@@ -595,6 +596,9 @@ class Server : public con::PeerHandler, public MapEventReceiver,
+ 	// The server mainly operates in this thread
+ 	ServerThread *m_thread = nullptr;
+ 
++	// Worker thread pool
++	ThreadPool *m_threadpool = nullptr;
++
+ 	/*
+ 		Time related stuff
+ 	*/
+diff --git a/src/util/ThreadPool.h b/src/util/ThreadPool.h
+new file mode 100644
+index 00000000..3f3bd8c4
+--- /dev/null
++++ b/src/util/ThreadPool.h
+@@ -0,0 +1,99 @@
++#ifndef THREAD_POOL_H
++#define THREAD_POOL_H
++
++#include <vector>
++#include <queue>
++#include <memory>
++#include <thread>
++#include <mutex>
++#include <condition_variable>
++#include <future>
++#include <functional>
++#include <stdexcept>
++
++class ThreadPool {
++public:
++    ThreadPool(size_t);
++    template<class F, class... Args>
++    auto enqueue(F&& f, Args&&... args) 
++        -> std::future<typename std::result_of<F(Args...)>::type>;
++    ~ThreadPool();
++private:
++    // need to keep track of threads so we can join them
++    std::vector< std::thread > workers;
++    // the task queue
++    std::queue< std::function<void()> > tasks;
++    
++    // synchronization
++    std::mutex queue_mutex;
++    std::condition_variable condition;
++    bool stop;
++};
++ 
++// the constructor just launches some amount of workers
++inline ThreadPool::ThreadPool(size_t threads)
++    :   stop(false)
++{
++    for(size_t i = 0;i<threads;++i)
++        workers.emplace_back(
++            [this]
++            {
++                for(;;)
++                {
++                    std::function<void()> task;
++
++                    {
++                        std::unique_lock<std::mutex> lock(this->queue_mutex);
++                        this->condition.wait(lock,
++                            [this]{ return this->stop || !this->tasks.empty(); });
++                        if(this->stop && this->tasks.empty())
++                            return;
++                        task = std::move(this->tasks.front());
++                        this->tasks.pop();
++                    }
++
++                    task();
++                }
++            }
++        );
++}
++
++// add new work item to the pool
++template<class F, class... Args>
++auto ThreadPool::enqueue(F&& f, Args&&... args) 
++    -> std::future<typename std::result_of<F(Args...)>::type>
++{
++    using return_type = typename std::result_of<F(Args...)>::type;
++
++    auto task = std::make_shared< std::packaged_task<return_type()> >(
++            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
++        );
++        
++    std::future<return_type> res = task->get_future();
++    {
++        std::unique_lock<std::mutex> lock(queue_mutex);
++
++        // don't allow enqueueing after stopping the pool
++        if(stop)
++            throw std::runtime_error("enqueue on stopped ThreadPool");
++
++        tasks.emplace([task](){ (*task)(); });
++    }
++    condition.notify_one();
++    return res;
++}
++
++// the destructor joins all threads
++inline ThreadPool::~ThreadPool()
++{
++    {
++        std::unique_lock<std::mutex> lock(queue_mutex);
++        stop = true;
++    }
++    condition.notify_all();
++    for(std::thread &worker: workers)
++        worker.join();
++}
++
++#endif
++
