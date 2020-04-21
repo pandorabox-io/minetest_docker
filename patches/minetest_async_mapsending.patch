@@ -1,5 +1,5 @@
 diff --git a/src/server.cpp b/src/server.cpp
-index 239ddd92..7c6080e6 100644
+index 239ddd92..976ee19d 100644
 --- a/src/server.cpp
 +++ b/src/server.cpp
 @@ -241,6 +241,8 @@ Server::Server(
@@ -28,7 +28,7 @@ index 239ddd92..7c6080e6 100644
  	for (const PrioritySortedBlockTransfer &block_to_send : queue) {
  		if (total_sending >= max_blocks_to_send)
  			break;
-@@ -2415,12 +2420,31 @@ void Server::SendBlocks(float dtime)
+@@ -2415,12 +2420,32 @@ void Server::SendBlocks(float dtime)
  		if (!client)
  			continue;
  
@@ -56,7 +56,8 @@ index 239ddd92..7c6080e6 100644
  	}
 +
 +	for (std::future<void>* f : futures){
-+		f->get();
++		if (f->valid())
++			f->get();
 +	}
 +
  	m_clients.unlock();
