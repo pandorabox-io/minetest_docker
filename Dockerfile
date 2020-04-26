@@ -51,6 +51,9 @@ RUN cd /git/minetest && cat /patches/minetest_async_mapsending.patch | patch -p1
 # async pg map and player save
 RUN cd /git/minetest && cat /patches/minetest_async_pg.patch | patch -p1
 
+# particle spawner range limit
+RUN cd /git/minetest && cat /patches/minetest_particlespawner_range.patch | patch -p1
+
 # profiler expose: minetest.get_profiler_value(name)
 RUN cd /git/minetest && cat /patches/lua_profiler.patch | patch -p1
 

@@ -1,0 +1,31 @@
+diff --git a/src/server.cpp b/src/server.cpp
+index af6d3e40..48469ebf 100644
+--- a/src/server.cpp
++++ b/src/server.cpp
+@@ -1602,12 +1602,25 @@ void Server::SendAddParticleSpawner(session_t peer_id, u16 protocol_version,
+ 	const struct TileAnimationParams &animation, u8 glow)
+ {
+ 	if (peer_id == PEER_ID_INEXISTENT) {
+-		// This sucks and should be replaced:
++
++		static thread_local const float radius =
++				g_settings->getS16("max_block_send_distance") * MAP_BLOCKSIZE * BS;
++
+ 		std::vector<session_t> clients = m_clients.getClientIDs();
+ 		for (const session_t client_id : clients) {
+ 			RemotePlayer *player = m_env->getPlayer(client_id);
+ 			if (!player)
+ 				continue;
++
++			PlayerSAO *sao = player->getPlayerSAO();
++			if (!sao)
++				continue;
++
++			// Do not send to distant clients
++			if (sao->getBasePosition().getDistanceFrom(minpos * BS) > (radius*5) &&
++				sao->getBasePosition().getDistanceFrom(maxpos * BS) > (radius*5))
++				continue;
++
+ 			SendAddParticleSpawner(client_id, player->protocol_version,
+ 					amount, spawntime, minpos, maxpos,
+ 					minvel, maxvel, minacc, maxacc, minexptime, maxexptime,
