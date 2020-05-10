@@ -34,31 +34,14 @@ RUN cd /git && git clone --depth 1 ${ENGINE_REPO} -b ${ENGINE_BRANCH}
 RUN cd /git/minetest/ && rm -rf games/minetest_game && git clone --depth 1 ${GAME_REPO} games/minetest_game -b ${GAME_BRANCH}
 
 # apply patches
-COPY patches/* /patches/
+COPY patches/* /git/minetest/patches/
+COPY patch-engine.sh /git/minetest/patch-engine.sh
 
 # https://github.com/minetest/minetest_game/commit/c1f41720fc3ba7b69e091326f1ce2ac69588fb13
 RUN cd /git/minetest/games/minetest_game && cat /patches/game_tnt_crash.patch | patch -p1
 
-# sqlite3 patch, issue: https://github.com/pandorabox-io/pandorabox.io/issues/456
-RUN cd /git/minetest && cat /patches/minetest_auth_insert_race.patch | patch -p1
-
-# auth iterate performance patch
-RUN cd /git/minetest && cat /patches/auth_iterater_perf.patch | patch -p1
-
-# async map sending with a threadpool
-RUN cd /git/minetest && cat /patches/minetest_async_mapsending.patch | patch -p1
-
-# async pg map and player save
-RUN cd /git/minetest && cat /patches/minetest_async_pg.patch | patch -p1
-
-# particle spawner range limit
-RUN cd /git/minetest && cat /patches/minetest_particlespawner_range.patch | patch -p1
-
-# constants adjustments
-RUN cd /git/minetest && cat /patches/minetest_mapsending_constants.patch | patch -p1
-
-# profiler expose: minetest.get_profiler_value(name)
-RUN cd /git/minetest && cat /patches/lua_profiler.patch | patch -p1
+# run engine patching
+RUN cd /git/minetest/ && ./patch-engine.sh
 
 RUN cd /git/minetest && cmake . \
 	-DCMAKE_INSTALL_PREFIX=/usr/local\
