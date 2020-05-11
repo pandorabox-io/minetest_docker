@@ -1,6 +1,5 @@
 #!/bin/sh
 # simple integration test
-set -e
 
 CFG=/tmp/minetest.conf
 MT_WORLD_DIR=/tmp/world
