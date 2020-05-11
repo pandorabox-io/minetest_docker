@@ -4,12 +4,12 @@ index 16e026ce..b09e55f1 100644
 +++ b/src/server.cpp
 @@ -270,6 +270,8 @@ Server::Server(
  			"Valid received packets processed");
- 
+
  	m_lag_gauge->set(g_settings->getFloat("dedicated_server_step"));
 +
-+	m_threadpool = new ThreadPool(4)
++	m_threadpool = new ThreadPool(4);
  }
- 
+
  Server::~Server()
 @@ -324,6 +326,7 @@ Server::~Server()
  	if (m_thread) {
@@ -17,12 +17,12 @@ index 16e026ce..b09e55f1 100644
  		delete m_thread;
 +		delete m_threadpool;
  	}
- 
+
  	// Delete things in the reverse order of creation
 @@ -2380,12 +2383,24 @@ void Server::SendBlocks(float dtime)
  		if (!client)
  			continue;
- 
+
 -		SendBlockNoLock(block_to_send.peer_id, block, client->serialization_version,
 -				client->net_proto_version);
 +		m_threadpool->enqueue(
@@ -34,7 +34,7 @@ index 16e026ce..b09e55f1 100644
 +				client->net_proto_version
 +			);
 +		});
- 
+
  		client->SentBlock(block_to_send.pos);
  		total_sending++;
  	}
@@ -45,7 +45,7 @@ index 16e026ce..b09e55f1 100644
 +
  	m_clients.unlock();
  }
- 
+
 diff --git a/src/server.h b/src/server.h
 index 7a1de937..a1fc7c12 100644
 --- a/src/server.h
@@ -55,13 +55,13 @@ index 7a1de937..a1fc7c12 100644
  #include <map>
  #include <vector>
 +#include "util/ThreadPool.h"
- 
+
  class ChatEvent;
  struct ChatEventChat;
 @@ -587,6 +588,9 @@ class Server : public con::PeerHandler, public MapEventReceiver,
  	// The server mainly operates in this thread
  	ServerThread *m_thread = nullptr;
- 
+
 +	// Worker thread pool
 +	ThreadPool *m_threadpool = nullptr;
 +

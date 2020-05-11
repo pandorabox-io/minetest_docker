@@ -1,5 +1,6 @@
 #!/bin/sh
 # simple integration test
+set -e
 
 CFG=/tmp/minetest.conf
 MT_WORLD_DIR=/tmp/world
@@ -7,6 +8,9 @@ MT_WORLD_DIR=/tmp/world
 cat <<EOF > ${CFG}
 # test config
 EOF
+
+# TODO: postgres database test
+# TODO: dummy headless client test
 
 docker run --rm -i \
 	-v ${CFG}:/data/minetest.conf:ro \
