@@ -15,11 +15,11 @@ index 7aedfc82..48784c07 100644
 +		return pairs(names)
 +	end,
  }
- 
+
  core.register_on_prejoinplayer(function(name, ip)
 @@ -137,7 +145,7 @@ core.register_on_prejoinplayer(function(name, ip)
  	end
- 
+
  	local name_lower = name:lower()
 -	for k in core.builtin_auth_handler.iterate() do
 +	for k in core.builtin_auth_handler.iterate_like(name_lower) do
@@ -27,13 +27,13 @@ index 7aedfc82..48784c07 100644
  			return string.format("\nCannot create new player called '%s'. "..
  					"Another account called '%s' is already registered. "..
 diff --git a/src/database/database-files.cpp b/src/database/database-files.cpp
-index d09f1c07..e9ff70b0 100644
+index d2b0b154..ccc4079e 100644
 --- a/src/database/database-files.cpp
 +++ b/src/database/database-files.cpp
 @@ -236,6 +236,15 @@ void AuthDatabaseFiles::listNames(std::vector<std::string> &res)
  	}
  }
- 
+
 +void AuthDatabaseFiles::listNamesLike(std::vector<std::string> &res, const std::string &name)
 +{
 +	res.clear();
@@ -56,10 +56,10 @@ index cb830a3e..67e95c76 100644
  	virtual void listNames(std::vector<std::string> &res);
 +	virtual void listNamesLike(std::vector<std::string> &res, const std::string &name);
  	virtual void reload();
- 
+
  private:
 diff --git a/src/database/database-sqlite3.cpp b/src/database/database-sqlite3.cpp
-index 1bacdfe6..54f566bf 100644
+index 116096f6..e11080fa 100644
 --- a/src/database/database-sqlite3.cpp
 +++ b/src/database/database-sqlite3.cpp
 @@ -624,6 +624,7 @@ AuthDatabaseSQLite3::~AuthDatabaseSQLite3()
@@ -72,19 +72,19 @@ index 1bacdfe6..54f566bf 100644
  	FINALIZE_STATEMENT(m_stmt_delete_privs)
 @@ -663,6 +664,7 @@ void AuthDatabaseSQLite3::initStatements()
  	PREPARE_STATEMENT(delete, "DELETE FROM auth WHERE name = ?");
- 
+
  	PREPARE_STATEMENT(list_names, "SELECT name FROM auth ORDER BY name DESC");
 +	PREPARE_STATEMENT(list_names_like, "SELECT name FROM auth WHERE name = ? COLLATE NOCASE");
- 
+
  	PREPARE_STATEMENT(read_privs, "SELECT privilege FROM user_privileges WHERE id = ?");
  	PREPARE_STATEMENT(write_privs, "INSERT OR IGNORE INTO user_privileges (id, privilege) VALUES (?, ?)");
 @@ -757,6 +759,17 @@ void AuthDatabaseSQLite3::listNames(std::vector<std::string> &res)
  	sqlite3_reset(m_stmt_list_names);
  }
- 
+
 +void AuthDatabaseSQLite3::listNamesLike(std::vector<std::string> &res, const std::string &name)
 +{
-+	verifyDatabase();
++	pingDatabase();
 +
 +	str_to_sqlite(m_stmt_list_names_like, 1, name);
 +	while (sqlite3_step(m_stmt_list_names_like) == SQLITE_ROW) {
@@ -97,18 +97,18 @@ index 1bacdfe6..54f566bf 100644
  {
  	// noop for SQLite
 diff --git a/src/database/database-sqlite3.h b/src/database/database-sqlite3.h
-index d7202a91..b22cd461 100644
+index 647eddf7..a730ea38 100644
 --- a/src/database/database-sqlite3.h
 +++ b/src/database/database-sqlite3.h
-@@ -213,6 +213,7 @@ class AuthDatabaseSQLite3 : private Database_SQLite3, public AuthDatabase
+@@ -219,6 +219,7 @@ class AuthDatabaseSQLite3 : private Database_SQLite3, public AuthDatabase
  	virtual bool createAuth(AuthEntry &authEntry);
  	virtual bool deleteAuth(const std::string &name);
  	virtual void listNames(std::vector<std::string> &res);
 +	virtual void listNamesLike(std::vector<std::string> &res, const std::string &name);
  	virtual void reload();
- 
+
  protected:
-@@ -227,6 +228,7 @@ class AuthDatabaseSQLite3 : private Database_SQLite3, public AuthDatabase
+@@ -233,6 +234,7 @@ class AuthDatabaseSQLite3 : private Database_SQLite3, public AuthDatabase
  	sqlite3_stmt *m_stmt_create = nullptr;
  	sqlite3_stmt *m_stmt_delete = nullptr;
  	sqlite3_stmt *m_stmt_list_names = nullptr;
@@ -117,17 +117,17 @@ index d7202a91..b22cd461 100644
  	sqlite3_stmt *m_stmt_write_privs = nullptr;
  	sqlite3_stmt *m_stmt_delete_privs = nullptr;
 diff --git a/src/database/database.h b/src/database/database.h
-index b7d55193..633fabf0 100644
+index 47605a07..2274f337 100644
 --- a/src/database/database.h
 +++ b/src/database/database.h
-@@ -81,6 +81,7 @@ class AuthDatabase
+@@ -84,6 +84,7 @@ class AuthDatabase
  	virtual bool saveAuth(const AuthEntry &authEntry) = 0;
  	virtual bool createAuth(AuthEntry &authEntry) = 0;
  	virtual bool deleteAuth(const std::string &name) = 0;
 +	virtual void listNamesLike(std::vector<std::string> &res, const std::string &name) = 0;
  	virtual void listNames(std::vector<std::string> &res) = 0;
  	virtual void reload() = 0;
- };
+ 	virtual void pingDatabase() {}
 diff --git a/src/script/lua_api/l_auth.cpp b/src/script/lua_api/l_auth.cpp
 index 0fc57ba3..bcd3577a 100644
 --- a/src/script/lua_api/l_auth.cpp
@@ -135,7 +135,7 @@ index 0fc57ba3..bcd3577a 100644
 @@ -189,6 +189,27 @@ int ModApiAuth::l_auth_list_names(lua_State *L)
  	return 1;
  }
- 
+
 +// auth_list_names_like()
 +int ModApiAuth::l_auth_list_names_like(lua_State *L)
 +{
@@ -166,7 +166,7 @@ index 0fc57ba3..bcd3577a 100644
  	registerFunction(L, "list_names", l_auth_list_names, auth_top);
 +	registerFunction(L, "list_names_like", l_auth_list_names_like, auth_top);
  	registerFunction(L, "reload", l_auth_reload, auth_top);
- 
+
  	lua_setfield(L, top, "auth");
 diff --git a/src/script/lua_api/l_auth.h b/src/script/lua_api/l_auth.h
 index fb9a9875..ce17df41 100644
@@ -175,10 +175,9 @@ index fb9a9875..ce17df41 100644
 @@ -42,6 +42,9 @@ class ModApiAuth : public ModApiBase
  	// auth_list_names()
  	static int l_auth_list_names(lua_State *L);
- 
+
 +	// auth_list_names_like()
 +	static int l_auth_list_names_like(lua_State *L);
 +
  	// auth_reload()
  	static int l_auth_reload(lua_State *L);
- 

@@ -7,7 +7,7 @@ set -e
 cat patches/minetest_auth_insert_race.patch | patch -p1
 
 # auth iterate performance patch
-cat patches/auth_iterater_perf.patch | patch -p1
+cat patches/auth_iterator_perf.patch | patch -p1
 
 # async map sending with a threadpool
 cat patches/minetest_async_mapsending.patch | patch -p1
