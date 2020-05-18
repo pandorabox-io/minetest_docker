@@ -8,6 +8,9 @@ cat <<EOF > ${CFG}
 # test config
 EOF
 
+# TODO: postgres database test
+# TODO: dummy headless client test
+
 docker run --rm -i \
 	-v ${CFG}:/data/minetest.conf:ro \
 	-v ${MT_WORLD_DIR}:/data/world \

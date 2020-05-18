@@ -1,10 +1,10 @@
 # Stage 1 build
 FROM ubuntu:20.04
 
-ENV GAME_BRANCH=5.2.0
+ENV GAME_BRANCH=master
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=5.2.0
+ENV ENGINE_BRANCH=master
 ENV ENGINE_REPO=https://github.com/minetest/minetest.git
 
 # RelWithDebInfo
@@ -36,11 +36,6 @@ RUN cd /git/minetest/ && rm -rf games/minetest_game && git clone --depth 1 ${GAM
 # apply patches
 COPY patches/* /git/minetest/patches/
 COPY patch-engine.sh /git/minetest/patch-engine.sh
-
-# https://github.com/minetest/minetest_game/commit/c1f41720fc3ba7b69e091326f1ce2ac69588fb13
-RUN cd /git/minetest/games/minetest_game && cat /patches/game_tnt_crash.patch | patch -p1
-
-# run engine patching
 RUN cd /git/minetest/ && ./patch-engine.sh
 
 RUN cd /git/minetest && cmake . \

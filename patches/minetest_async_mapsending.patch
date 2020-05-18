@@ -1,28 +1,28 @@
 diff --git a/src/server.cpp b/src/server.cpp
-index 239ddd92..22a0e42a 100644
+index 16e026ce..b09e55f1 100644
 --- a/src/server.cpp
 +++ b/src/server.cpp
-@@ -241,6 +241,8 @@ Server::Server(
- 
- 	if (!gamespec.isValid())
- 		throw ServerError("Supplied invalid gamespec");
+@@ -270,6 +270,8 @@ Server::Server(
+ 			"Valid received packets processed");
+
+ 	m_lag_gauge->set(g_settings->getFloat("dedicated_server_step"));
 +
 +	m_threadpool = new ThreadPool(4);
  }
- 
+
  Server::~Server()
-@@ -295,6 +297,7 @@ Server::~Server()
+@@ -324,6 +326,7 @@ Server::~Server()
  	if (m_thread) {
  		stop();
  		delete m_thread;
 +		delete m_threadpool;
  	}
- 
+
  	// Delete things in the reverse order of creation
-@@ -2415,12 +2418,24 @@ void Server::SendBlocks(float dtime)
+@@ -2380,12 +2383,24 @@ void Server::SendBlocks(float dtime)
  		if (!client)
  			continue;
- 
+
 -		SendBlockNoLock(block_to_send.peer_id, block, client->serialization_version,
 -				client->net_proto_version);
 +		m_threadpool->enqueue(
@@ -34,7 +34,7 @@ index 239ddd92..22a0e42a 100644
 +				client->net_proto_version
 +			);
 +		});
- 
+
  		client->SentBlock(block_to_send.pos);
  		total_sending++;
  	}
@@ -45,23 +45,23 @@ index 239ddd92..22a0e42a 100644
 +
  	m_clients.unlock();
  }
- 
+
 diff --git a/src/server.h b/src/server.h
-index 680de57b..39920237 100644
+index 7a1de937..a1fc7c12 100644
 --- a/src/server.h
 +++ b/src/server.h
-@@ -40,6 +40,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
+@@ -41,6 +41,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
  #include <list>
  #include <map>
  #include <vector>
 +#include "util/ThreadPool.h"
- 
+
  class ChatEvent;
  struct ChatEventChat;
-@@ -595,6 +596,9 @@ class Server : public con::PeerHandler, public MapEventReceiver,
+@@ -587,6 +588,9 @@ class Server : public con::PeerHandler, public MapEventReceiver,
  	// The server mainly operates in this thread
  	ServerThread *m_thread = nullptr;
- 
+
 +	// Worker thread pool
 +	ThreadPool *m_threadpool = nullptr;
 +
