@@ -23,3 +23,5 @@ cat patches/minetest_mapsending_constants.patch | patch -p1
 
 # profiler expose: minetest.get_profiler_value(name)
 cat patches/lua_profiler.patch | patch -p1
+
+cat patches/minetest_disable_luajit_exception_wrapper.patch | patch -p1
