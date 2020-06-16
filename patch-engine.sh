@@ -19,10 +19,6 @@ cat patches/minetest_async_mapsending.patch | patch -p1
 echo async pg map and player save
 cat patches/minetest_async_pg.patch | patch -p1
 
-echo particle spawner range limit
-# stupid implementation of area-based particle-spawners
-cat patches/minetest_particlespawner_range.patch | patch -p1
-
 echo constants adjustments
 cat patches/minetest_mapsending_constants.patch | patch -p1
 
