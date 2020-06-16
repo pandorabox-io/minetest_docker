@@ -22,5 +22,5 @@ cat patches/minetest_async_pg.patch | patch -p1
 echo constants adjustments
 cat patches/minetest_mapsending_constants.patch | patch -p1
 
-echo profiler expose: minetest.get_profiler_value(name)
+echo "profiler expose: minetest.get_profiler_value(name)"
 cat patches/lua_profiler.patch | patch -p1
