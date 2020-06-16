@@ -2,7 +2,6 @@
 minetest docker builder
 
 ![docker](https://github.com/pandorabox-io/minetest_docker/workflows/docker/badge.svg)
-![patches](https://github.com/pandorabox-io/minetest_docker/workflows/patch-test/badge.svg)
 
 # Images
 
