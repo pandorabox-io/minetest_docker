@@ -28,7 +28,9 @@ RUN apt-get update &&\
 RUN mkdir /git
 
 # minetest
-RUN cd /git && git clone --depth 1 ${ENGINE_REPO} &&\
+RUN cd /git &&\
+ git clone --depth 1 ${ENGINE_REPO} &&\
+ cd minetest &&\
  git checkout ${ENGINE_BRANCH}
 
 # minetest game
