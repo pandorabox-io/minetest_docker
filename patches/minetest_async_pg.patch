@@ -1,5 +1,5 @@
 diff --git a/src/database/CMakeLists.txt b/src/database/CMakeLists.txt
-index e9d157c2..839c9152 100644
+index e9d157c29..839c9152f 100644
 --- a/src/database/CMakeLists.txt
 +++ b/src/database/CMakeLists.txt
 @@ -4,6 +4,8 @@ set(database_SRCS
@@ -12,170 +12,71 @@ index e9d157c2..839c9152 100644
  	${CMAKE_CURRENT_SOURCE_DIR}/database-sqlite3.cpp
  	PARENT_SCOPE
 diff --git a/src/database/database-postgresql.cpp b/src/database/database-postgresql.cpp
-index ca750b46..a890a5c6 100644
+index ca750b466..c65e14bd5 100644
 --- a/src/database/database-postgresql.cpp
 +++ b/src/database/database-postgresql.cpp
-@@ -59,6 +59,18 @@ Database_PostgreSQL::Database_PostgreSQL(const std::string &connect_string) :
- Database_PostgreSQL::~Database_PostgreSQL()
+@@ -176,8 +176,12 @@ MapDatabasePostgreSQL::MapDatabasePostgreSQL(const std::string &connect_string):
+ 	MapDatabase()
  {
- 	PQfinish(m_conn);
-+
-+  map_save_queue->stop();
-+	map_save_queue->wait();
-+
-+	delete map_save_queue;
-+
-+  player_save_queue->stop();
-+	player_save_queue->wait();
-+
-+  delete player_save_queue;
-+
-+  PQfinish(m_async_conn);
+ 	connectToDatabase();
++  map_save_queue = new MapSaveQueue(connect_string);
  }
  
- void Database_PostgreSQL::connectToDatabase()
-@@ -71,6 +83,14 @@ void Database_PostgreSQL::connectToDatabase()
- 			PQerrorMessage(m_conn));
- 	}
++MapDatabasePostgreSQL::~MapDatabasePostgreSQL() {
++  delete map_save_queue;
++}
  
-+  m_async_conn = PQconnectdb(m_connect_string.c_str());
-+
-+	if (PQstatus(m_async_conn) != CONNECTION_OK) {
-+		throw DatabaseException(std::string(
-+			"PostgreSQL async database error: ") +
-+			PQerrorMessage(m_async_conn));
-+	}
-+
- 	m_pgversion = PQserverVersion(m_conn);
- 
- 	/*
-@@ -88,6 +108,12 @@ void Database_PostgreSQL::connectToDatabase()
- 
- 	createDatabase();
- 	initStatements();
-+
-+  map_save_queue = new MapSaveQueue(m_async_conn);
-+	map_save_queue->start();
-+
-+  player_save_queue = new PlayerSaveQueue(m_async_conn);
-+	player_save_queue->start();
- }
- 
- void Database_PostgreSQL::pingDatabase()
-@@ -238,25 +264,8 @@ bool MapDatabasePostgreSQL::saveBlock(const v3s16 &pos, const std::string &data)
+ void MapDatabasePostgreSQL::createDatabase()
+ {
+@@ -238,6 +242,8 @@ bool MapDatabasePostgreSQL::saveBlock(const v3s16 &pos, const std::string &data)
  		return false;
  	}
  
--	pingDatabase();
--
--	s32 x, y, z;
--	x = htonl(pos.X);
--	y = htonl(pos.Y);
--	z = htonl(pos.Z);
 +  map_save_queue->enqueue(pos, data);
++  /*
+ 	pingDatabase();
  
--	const void *args[] = { &x, &y, &z, data.c_str() };
--	const int argLen[] = {
--		sizeof(x), sizeof(y), sizeof(z), (int)data.size()
--	};
--	const int argFmt[] = { 1, 1, 1, 1 };
--
--	if (getPGVersion() < 90500) {
--		execPrepared("write_block_update", ARRLEN(args), args, argLen, argFmt);
--		execPrepared("write_block_insert", ARRLEN(args), args, argLen, argFmt);
--	} else {
--		execPrepared("write_block", ARRLEN(args), args, argLen, argFmt);
--	}
+ 	s32 x, y, z;
+@@ -257,6 +263,7 @@ bool MapDatabasePostgreSQL::saveBlock(const v3s16 &pos, const std::string &data)
+ 	} else {
+ 		execPrepared("write_block", ARRLEN(args), args, argLen, argFmt);
+ 	}
++  */
  	return true;
  }
  
-@@ -462,83 +471,7 @@ void PlayerDatabasePostgreSQL::savePlayer(RemotePlayer *player)
+@@ -325,6 +332,11 @@ PlayerDatabasePostgreSQL::PlayerDatabasePostgreSQL(const std::string &connect_st
+ 	PlayerDatabase()
+ {
+ 	connectToDatabase();
++  player_save_queue = new PlayerSaveQueue(connect_string);
++}
++
++PlayerDatabasePostgreSQL::~PlayerDatabasePostgreSQL(){
++  delete player_save_queue;
+ }
+ 
+ 
+@@ -462,6 +474,8 @@ void PlayerDatabasePostgreSQL::savePlayer(RemotePlayer *player)
  	if (!sao)
  		return;
  
--	pingDatabase();
--
--	v3f pos = sao->getBasePosition();
--	std::string pitch = ftos(sao->getLookPitch());
--	std::string yaw = ftos(sao->getRotation().Y);
--	std::string posx = ftos(pos.X);
--	std::string posy = ftos(pos.Y);
--	std::string posz = ftos(pos.Z);
--	std::string hp = itos(sao->getHP());
--	std::string breath = itos(sao->getBreath());
--	const char *values[] = {
--		player->getName(),
--		pitch.c_str(),
--		yaw.c_str(),
--		posx.c_str(), posy.c_str(), posz.c_str(),
--		hp.c_str(),
--		breath.c_str()
--	};
--
--	const char* rmvalues[] = { player->getName() };
--	beginSave();
--
--	if (getPGVersion() < 90500) {
--		if (!playerDataExists(player->getName()))
--			execPrepared("create_player", 8, values, true, false);
--		else
--			execPrepared("update_player", 8, values, true, false);
--	}
--	else
--		execPrepared("save_player", 8, values, true, false);
--
--	// Write player inventories
--	execPrepared("remove_player_inventories", 1, rmvalues);
--	execPrepared("remove_player_inventory_items", 1, rmvalues);
--
--	std::vector<const InventoryList*> inventory_lists = sao->getInventory()->getLists();
--	for (u16 i = 0; i < inventory_lists.size(); i++) {
--		const InventoryList* list = inventory_lists[i];
--		const std::string &name = list->getName();
--		std::string width = itos(list->getWidth()),
--			inv_id = itos(i), lsize = itos(list->getSize());
--
--		const char* inv_values[] = {
--			player->getName(),
--			inv_id.c_str(),
--			width.c_str(),
--			name.c_str(),
--			lsize.c_str()
--		};
--		execPrepared("add_player_inventory", 5, inv_values);
--
--		for (u32 j = 0; j < list->getSize(); j++) {
--			std::ostringstream os;
--			list->getItem(j).serialize(os);
--			std::string itemStr = os.str(), slotId = itos(j);
--
--			const char* invitem_values[] = {
--				player->getName(),
--				inv_id.c_str(),
--				slotId.c_str(),
--				itemStr.c_str()
--			};
--			execPrepared("add_player_inventory_item", 4, invitem_values);
--		}
--	}
--
--	execPrepared("remove_player_metadata", 1, rmvalues);
--	const StringMap &attrs = sao->getMeta().getStrings();
--	for (const auto &attr : attrs) {
--		const char *meta_values[] = {
--			player->getName(),
--			attr.first.c_str(),
--			attr.second.c_str()
--		};
--		execPrepared("save_player_metadata", 3, meta_values);
--	}
--	endSave();
 +  player_save_queue->enqueue(player);
++  /*
+ 	pingDatabase();
  
+ 	v3f pos = sao->getBasePosition();
+@@ -539,7 +553,7 @@ void PlayerDatabasePostgreSQL::savePlayer(RemotePlayer *player)
+ 		execPrepared("save_player_metadata", 3, meta_values);
+ 	}
+ 	endSave();
+-
++  */
  	player->onSuccessfulSave();
  }
+ 
 diff --git a/src/database/database-postgresql.h b/src/database/database-postgresql.h
-index 340f0a7b..1bcfdd53 100644
+index 340f0a7b8..c3fd24e07 100644
 --- a/src/database/database-postgresql.h
 +++ b/src/database/database-postgresql.h
 @@ -23,6 +23,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
@@ -188,23 +89,48 @@ index 340f0a7b..1bcfdd53 100644
  
  class Settings;
  
-@@ -95,6 +98,10 @@ class Database_PostgreSQL: public Database
- 	}
+@@ -112,7 +115,7 @@ class MapDatabasePostgreSQL : private Database_PostgreSQL, public MapDatabase
+ {
+ public:
+ 	MapDatabasePostgreSQL(const std::string &connect_string);
+-	virtual ~MapDatabasePostgreSQL() = default;
++	virtual ~MapDatabasePostgreSQL();
  
- 	const int getPGVersion() const { return m_pgversion; }
-+
-+	PGconn *m_async_conn = nullptr;
+ 	virtual void pingDatabase() { Database_PostgreSQL::pingDatabase(); }
+ 
+@@ -124,6 +127,8 @@ class MapDatabasePostgreSQL : private Database_PostgreSQL, public MapDatabase
+ 	void beginSave() { Database_PostgreSQL::beginSave(); }
+ 	void endSave() { Database_PostgreSQL::endSave(); }
+ 
 +	MapSaveQueue *map_save_queue;
++
+ protected:
+ 	virtual void createDatabase();
+ 	virtual void initStatements();
+@@ -133,7 +138,7 @@ class PlayerDatabasePostgreSQL : private Database_PostgreSQL, public PlayerDatab
+ {
+ public:
+ 	PlayerDatabasePostgreSQL(const std::string &connect_string);
+-	virtual ~PlayerDatabasePostgreSQL() = default;
++	virtual ~PlayerDatabasePostgreSQL();
+ 
+ 	virtual void pingDatabase() { Database_PostgreSQL::pingDatabase(); }
+ 
+@@ -142,6 +147,8 @@ class PlayerDatabasePostgreSQL : private Database_PostgreSQL, public PlayerDatab
+ 	bool removePlayer(const std::string &name);
+ 	void listPlayers(std::vector<std::string> &res);
+ 
 +	PlayerSaveQueue *player_save_queue;
- private:
- 	// Database connectivity checks
- 	void ping();
++
+ protected:
+ 	virtual void createDatabase();
+ 	virtual void initStatements();
 diff --git a/src/database/postgres/mapsavequeue.cpp b/src/database/postgres/mapsavequeue.cpp
 new file mode 100644
-index 00000000..0cbef450
+index 000000000..e5fa98b3e
 --- /dev/null
 +++ b/src/database/postgres/mapsavequeue.cpp
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,160 @@
 +
 +#include "config.h"
 +
@@ -221,9 +147,16 @@ index 00000000..0cbef450
 +#include <list>
 +#include "pgutil.h"
 +
-+MapSaveQueue::MapSaveQueue(PGconn *m_conn) :
-+	Thread("map_save_queue"),
-+	m_conn(m_conn) {
++MapSaveQueue::MapSaveQueue(const std::string &connect_string) :
++	Thread("map_save_queue") {
++
++	m_conn = PQconnectdb(connect_string.c_str());
++
++	if (PQstatus(m_conn) != CONNECTION_OK) {
++		throw DatabaseException(std::string(
++			"PostgreSQL database error: ") +
++			PQerrorMessage(m_conn));
++	}
 +
 +	m_pgversion = PQserverVersion(m_conn);
 +
@@ -358,10 +291,9 @@ index 00000000..0cbef450
 +}
 +
 +#endif //USE_POSTGRESQL
-\ No newline at end of file
 diff --git a/src/database/postgres/mapsavequeue.h b/src/database/postgres/mapsavequeue.h
 new file mode 100644
-index 00000000..aadb8e60
+index 000000000..93b71093c
 --- /dev/null
 +++ b/src/database/postgres/mapsavequeue.h
 @@ -0,0 +1,67 @@
@@ -412,7 +344,7 @@ index 00000000..aadb8e60
 +
 +class MapSaveQueue : public Thread {
 +public:
-+	MapSaveQueue(PGconn *m_conn);
++	MapSaveQueue(const std::string &connect_string);
 +	~MapSaveQueue();
 +	void enqueue(const v3s16 &pos, const std::string &data);
 +
@@ -434,7 +366,7 @@ index 00000000..aadb8e60
 +};
 diff --git a/src/database/postgres/pgutil.h b/src/database/postgres/pgutil.h
 new file mode 100644
-index 00000000..8010e873
+index 000000000..8010e873c
 --- /dev/null
 +++ b/src/database/postgres/pgutil.h
 @@ -0,0 +1,94 @@
@@ -535,10 +467,10 @@ index 00000000..8010e873
 \ No newline at end of file
 diff --git a/src/database/postgres/playersavequeue.cpp b/src/database/postgres/playersavequeue.cpp
 new file mode 100644
-index 00000000..703cd842
+index 000000000..b629acceb
 --- /dev/null
 +++ b/src/database/postgres/playersavequeue.cpp
-@@ -0,0 +1,317 @@
+@@ -0,0 +1,324 @@
 +
 +#include "config.h"
 +
@@ -671,9 +603,16 @@ index 00000000..703cd842
 +Save queue
 +*/
 +
-+PlayerSaveQueue::PlayerSaveQueue(PGconn *m_conn) :
-+	Thread("player_save_queue"),
-+	m_conn(m_conn) {
++PlayerSaveQueue::PlayerSaveQueue(const std::string &connect_string) :
++	Thread("player_save_queue") {
++
++	m_conn = PQconnectdb(connect_string.c_str());
++
++	if (PQstatus(m_conn) != CONNECTION_OK) {
++		throw DatabaseException(std::string(
++			"PostgreSQL database error: ") +
++			PQerrorMessage(m_conn));
++	}
 +
 +	m_pgversion = PQserverVersion(m_conn);
 +
@@ -858,7 +797,7 @@ index 00000000..703cd842
 +#endif //USE_POSTGRESQL
 diff --git a/src/database/postgres/playersavequeue.h b/src/database/postgres/playersavequeue.h
 new file mode 100644
-index 00000000..b60ed2c1
+index 000000000..3ba71dfa7
 --- /dev/null
 +++ b/src/database/postgres/playersavequeue.h
 @@ -0,0 +1,109 @@
@@ -936,7 +875,7 @@ index 00000000..b60ed2c1
 +	std::string player;
 +	std::string attr;
 +	std::string value;
-+	
++
 +};
 +
 +struct QueuedPlayerData {
@@ -949,7 +888,7 @@ index 00000000..b60ed2c1
 +
 +class PlayerSaveQueue : public Thread {
 +public:
-+	PlayerSaveQueue(PGconn *m_conn);
++	PlayerSaveQueue(const std::string &connect_string);
 +	~PlayerSaveQueue();
 +	void enqueue(RemotePlayer *player);
 +
