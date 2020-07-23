@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@main
 
     - name: Extract branch name
       shell: bash
@@ -27,5 +27,3 @@ jobs:
 
     - name: Push image
       run: docker push buckaroobanzay/minetest:${{ steps.extract_branch.outputs.branch }}
-
-
