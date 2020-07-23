@@ -1,10 +1,10 @@
 # Stage 1 build
 FROM ubuntu:20.04
 
-ENV GAME_BRANCH=5.2.0
+ENV GAME_BRANCH=5.3.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=7be082f9a8bb6bd46c226d7ef4c42f0fd9fe7314
+ENV ENGINE_BRANCH=5.3.0
 ENV ENGINE_REPO=https://github.com/minetest/minetest.git
 
 # RelWithDebInfo
