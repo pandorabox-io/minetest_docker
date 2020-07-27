@@ -12,10 +12,10 @@ index e9d157c29..839c9152f 100644
  	${CMAKE_CURRENT_SOURCE_DIR}/database-sqlite3.cpp
  	PARENT_SCOPE
 diff --git a/src/database/database-postgresql.cpp b/src/database/database-postgresql.cpp
-index ca750b466..2b49f2314 100644
+index e1bb39928..a417ec81a 100644
 --- a/src/database/database-postgresql.cpp
 +++ b/src/database/database-postgresql.cpp
-@@ -176,8 +176,14 @@ MapDatabasePostgreSQL::MapDatabasePostgreSQL(const std::string &connect_string):
+@@ -170,8 +170,14 @@ MapDatabasePostgreSQL::MapDatabasePostgreSQL(const std::string &connect_string):
  	MapDatabase()
  {
  	connectToDatabase();
@@ -30,16 +30,17 @@ index ca750b466..2b49f2314 100644
  
  void MapDatabasePostgreSQL::createDatabase()
  {
-@@ -238,6 +244,8 @@ bool MapDatabasePostgreSQL::saveBlock(const v3s16 &pos, const std::string &data)
+@@ -231,7 +237,8 @@ bool MapDatabasePostgreSQL::saveBlock(const v3s16 &pos, const std::string &data)
+ 			<< ")" << std::endl;
  		return false;
  	}
- 
+-
 +  map_save_queue->enqueue(pos, data);
 +  /*
- 	pingDatabase();
+ 	verifyDatabase();
  
  	s32 x, y, z;
-@@ -257,6 +265,7 @@ bool MapDatabasePostgreSQL::saveBlock(const v3s16 &pos, const std::string &data)
+@@ -251,6 +258,7 @@ bool MapDatabasePostgreSQL::saveBlock(const v3s16 &pos, const std::string &data)
  	} else {
  		execPrepared("write_block", ARRLEN(args), args, argLen, argFmt);
  	}
@@ -47,7 +48,7 @@ index ca750b466..2b49f2314 100644
  	return true;
  }
  
-@@ -325,6 +334,13 @@ PlayerDatabasePostgreSQL::PlayerDatabasePostgreSQL(const std::string &connect_st
+@@ -319,6 +327,13 @@ PlayerDatabasePostgreSQL::PlayerDatabasePostgreSQL(const std::string &connect_st
  	PlayerDatabase()
  {
  	connectToDatabase();
@@ -61,16 +62,17 @@ index ca750b466..2b49f2314 100644
  }
  
  
-@@ -462,6 +478,8 @@ void PlayerDatabasePostgreSQL::savePlayer(RemotePlayer *player)
+@@ -455,7 +470,8 @@ void PlayerDatabasePostgreSQL::savePlayer(RemotePlayer *player)
+ 	PlayerSAO* sao = player->getPlayerSAO();
  	if (!sao)
  		return;
- 
+-
 +  player_save_queue->enqueue(player);
 +  /*
- 	pingDatabase();
+ 	verifyDatabase();
  
  	v3f pos = sao->getBasePosition();
-@@ -539,7 +557,7 @@ void PlayerDatabasePostgreSQL::savePlayer(RemotePlayer *player)
+@@ -533,7 +549,7 @@ void PlayerDatabasePostgreSQL::savePlayer(RemotePlayer *player)
  		execPrepared("save_player_metadata", 3, meta_values);
  	}
  	endSave();
@@ -80,7 +82,7 @@ index ca750b466..2b49f2314 100644
  }
  
 diff --git a/src/database/database-postgresql.h b/src/database/database-postgresql.h
-index 340f0a7b8..c3fd24e07 100644
+index f47deda33..9ddafb65e 100644
 --- a/src/database/database-postgresql.h
 +++ b/src/database/database-postgresql.h
 @@ -23,6 +23,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
@@ -100,9 +102,9 @@ index 340f0a7b8..c3fd24e07 100644
 -	virtual ~MapDatabasePostgreSQL() = default;
 +	virtual ~MapDatabasePostgreSQL();
  
- 	virtual void pingDatabase() { Database_PostgreSQL::pingDatabase(); }
- 
-@@ -124,6 +127,8 @@ class MapDatabasePostgreSQL : private Database_PostgreSQL, public MapDatabase
+ 	bool saveBlock(const v3s16 &pos, const std::string &data);
+ 	void loadBlock(const v3s16 &pos, std::string *block);
+@@ -122,6 +125,8 @@ class MapDatabasePostgreSQL : private Database_PostgreSQL, public MapDatabase
  	void beginSave() { Database_PostgreSQL::beginSave(); }
  	void endSave() { Database_PostgreSQL::endSave(); }
  
@@ -111,16 +113,15 @@ index 340f0a7b8..c3fd24e07 100644
  protected:
  	virtual void createDatabase();
  	virtual void initStatements();
-@@ -133,7 +138,7 @@ class PlayerDatabasePostgreSQL : private Database_PostgreSQL, public PlayerDatab
+@@ -131,13 +136,15 @@ class PlayerDatabasePostgreSQL : private Database_PostgreSQL, public PlayerDatab
  {
  public:
  	PlayerDatabasePostgreSQL(const std::string &connect_string);
 -	virtual ~PlayerDatabasePostgreSQL() = default;
 +	virtual ~PlayerDatabasePostgreSQL();
  
- 	virtual void pingDatabase() { Database_PostgreSQL::pingDatabase(); }
- 
-@@ -142,6 +147,8 @@ class PlayerDatabasePostgreSQL : private Database_PostgreSQL, public PlayerDatab
+ 	void savePlayer(RemotePlayer *player);
+ 	bool loadPlayer(RemotePlayer *player, PlayerSAO *sao);
  	bool removePlayer(const std::string &name);
  	void listPlayers(std::vector<std::string> &res);
  

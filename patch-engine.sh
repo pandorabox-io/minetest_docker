@@ -15,3 +15,6 @@ cat patches/minetest_mapsending_constants.patch | patch -p1
 
 echo "profiler expose: minetest.get_profiler_value(name)"
 cat patches/lua_profiler.patch | patch -p1
+
+echo async pg map and player save
+cat patches/minetest_async_pg.patch | patch -p1
