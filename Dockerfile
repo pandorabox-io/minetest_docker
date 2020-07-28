@@ -27,9 +27,15 @@ RUN apt-get update &&\
 
 RUN mkdir /git
 
+# git setup
+RUN git config --global user.email "you@example.com" && \
+ git config --global user.name "somename"
+
 # minetest
 RUN cd /git && \
- git clone --depth 1 ${ENGINE_REPO} -b ${ENGINE_BRANCH}
+ git clone ${ENGINE_REPO} -b ${ENGINE_BRANCH} && \
+ cd minetest && \
+ git cherry-pick 82731d0d3d8bfe9e56f89466991f13c037f3a61e
 
 # minetest game
 RUN cd /git/minetest/ && rm -rf games/minetest_game && \
