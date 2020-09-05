@@ -4,7 +4,8 @@ FROM ubuntu:20.04
 ENV GAME_BRANCH=5.3.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=5.3.0
+#ENV ENGINE_BRANCH=5.3.0
+ENV ENGINE_BRANCH=master
 ENV ENGINE_REPO=https://github.com/minetest/minetest.git
 
 # RelWithDebInfo
@@ -33,9 +34,7 @@ RUN git config --global user.email "you@example.com" && \
 
 # minetest
 RUN cd /git && \
- git clone ${ENGINE_REPO} -b ${ENGINE_BRANCH} && \
- cd minetest && \
- git cherry-pick 82731d0d3d8bfe9e56f89466991f13c037f3a61e
+ git clone ${ENGINE_REPO} -b ${ENGINE_BRANCH}
 
 # minetest game
 RUN cd /git/minetest/ && rm -rf games/minetest_game && \
