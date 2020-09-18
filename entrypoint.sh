@@ -10,7 +10,7 @@ sleep inf &
 sleep_pid=$!
 
 exit_script() {
-        kill $pid
+  kill $pid
 	kill $sleep_pid
 }
 

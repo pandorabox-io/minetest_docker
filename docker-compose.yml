@@ -1,0 +1,22 @@
+version: "2"
+
+services:
+ minetest:
+  build: .
+  ports:
+   - "30000:30000/udp"
+  depends_on:
+   - "postgres"
+  volumes:
+   - "./data/minetest:/data"
+   - "./data/minetest.conf:/data/minetest.conf:ro"
+   - "./data/world/world.postgres.mt:/data/world/world.mt:ro"
+   - "./data/crashlogs:/crashlogs"
+   - "./data/minetest/root:/root/.minetest"
+
+ postgres:
+  image: postgres:12.4
+  environment:
+   POSTGRES_PASSWORD: enter
+  volumes:
+   - "./data/postgres:/var/lib/postgresql/data"

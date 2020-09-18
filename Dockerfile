@@ -1,11 +1,10 @@
 # Stage 1 build
-FROM ubuntu:20.04
+FROM alpine:3.12.0
 
 ENV GAME_BRANCH=5.3.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
 ENV ENGINE_BRANCH=5.3.0
-#ENV ENGINE_BRANCH=master
 ENV ENGINE_REPO=https://github.com/minetest/minetest.git
 
 # RelWithDebInfo
@@ -13,24 +12,21 @@ ENV ENGINE_REPO=https://github.com/minetest/minetest.git
 # Debug
 ENV ENGINE_BUILD_TYPE=RelWithDebInfo
 
-# tzdata issue: https://serverfault.com/questions/949991/how-to-install-tzdata-on-a-ubuntu-docker-image
-ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies
-# https://github.com/minetest/minetest
-RUN apt-get update &&\
- apt-get install -y build-essential libirrlicht-dev cmake libbz2-dev \
-  libpng-dev libjpeg-dev libsqlite3-dev libcurl4-openssl-dev \
-	zlib1g-dev libgmp-dev libjsoncpp-dev git \
-	libjsoncpp-dev libgmp-dev postgresql-server-dev-all postgresql-client \
-  libspatialindex6 libspatialindex-dev \
-  libluajit-5.1-dev lua5.1
+RUN apk add --no-cache build-base irrlicht-dev cmake bzip2-dev libpng-dev jpeg-dev libxxf86vm-dev \
+  mesa-dev sqlite-dev libogg-dev curl-dev freetype-dev zlib-dev gmp-dev jsoncpp-dev luajit-dev \
+  git postgresql-libs postgresql-client postgresql-dev
 
 RUN mkdir /git
 
 # git setup
 RUN git config --global user.email "you@example.com" && \
  git config --global user.name "somename"
+
+# spatialindex
+RUN cd /git && git clone --depth 1 https://github.com/libspatialindex/libspatialindex -b 1.9.3 && \
+  cd libspatialindex && \
+  cmake . && make -j4 && make install
 
 # minetest
 RUN cd /git && \
@@ -45,6 +41,7 @@ COPY patches/* /git/minetest/patches/
 COPY patch-engine.sh /git/minetest/patch-engine.sh
 RUN cd /git/minetest/ && ./patch-engine.sh
 
+# compile engine
 RUN cd /git/minetest && cmake . \
 	-DCMAKE_INSTALL_PREFIX=/usr/local\
 	-DCMAKE_BUILD_TYPE=${ENGINE_BUILD_TYPE} \
@@ -62,15 +59,15 @@ RUN cd /git/minetest && cmake . \
  make install
 
 # Stage 2 package
-FROM ubuntu:20.04
+FROM alpine:3.12.0
 
-RUN groupadd minetest && useradd -m -g minetest -d /var/lib/minetest minetest && \
-    apt-get update -y && \
-    apt-get -y install libcurl4 libjsoncpp1 libluajit-5.1-2 liblua5.1-0 libpq5 libsqlite3-0 \
-        libstdc++6 zlib1g libc6 libspatialindex6 libpq5 postgresql-client
+RUN apk add --no-cache irrlicht-dev bzip2-dev libpng-dev jpeg-dev libxxf86vm-dev \
+  mesa-dev sqlite-dev libogg-dev curl-dev freetype-dev zlib-dev gmp-dev jsoncpp-dev luajit-dev \
+  postgresql-libs postgresql-client postgresql-dev
 
 WORKDIR /data
 
+COPY --from=0 /usr/local/lib/libspatialindex* /usr/local/lib/
 COPY --from=0 /usr/local/share/minetest /usr/local/share/minetest
 COPY --from=0 /usr/local/bin/minetestserver /usr/local/bin/minetestserver
 COPY ./entrypoint.sh /entrypoint.sh
