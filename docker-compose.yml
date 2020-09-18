@@ -5,6 +5,7 @@ services:
   build: .
   ports:
    - "30000:30000/udp"
+   - "8080:8080"
   depends_on:
    - "postgres"
   volumes:
