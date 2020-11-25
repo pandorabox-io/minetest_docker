@@ -7,7 +7,7 @@ index 16e026ce..b09e55f1 100644
 
  	m_lag_gauge->set(g_settings->getFloat("dedicated_server_step"));
 +
-+	m_threadpool = new ThreadPool(4);
++	m_threadpool = new ThreadPool(8);
  }
 
  Server::~Server()
