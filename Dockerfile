@@ -4,7 +4,7 @@ FROM alpine:3.12.1
 ENV GAME_BRANCH=5.3.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=5.3.0
+ENV ENGINE_BRANCH=f1d72d212a0661588be27003069abf4bd8092e55
 ENV ENGINE_REPO=https://github.com/minetest/minetest.git
 
 # RelWithDebInfo
@@ -35,9 +35,11 @@ RUN cd /git && git clone --depth 1 https://github.com/libspatialindex/libspatial
   cd libspatialindex && \
   cmake . && make -j4 && make install
 
-# minetest
-RUN cd /git && \
- git clone ${ENGINE_REPO} -b ${ENGINE_BRANCH}
+# download minetest engine
+RUN apk add --no-cache wget unzip && cd /git && \
+ wget https://github.com/minetest/minetest/archive/${ENGINE_BRANCH}.zip -O minetest.zip && \
+ unzip minetest.zip && \
+ mv minetest-* minetest
 
 # minetest game
 RUN cd /git/minetest/ && rm -rf games/minetest_game && \
