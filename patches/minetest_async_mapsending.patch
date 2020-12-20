@@ -1,28 +1,20 @@
 diff --git a/src/server.cpp b/src/server.cpp
-index 16e026ce..b09e55f1 100644
+index 2f2262dad..ab8c645ef 100644
 --- a/src/server.cpp
 +++ b/src/server.cpp
-@@ -270,6 +270,8 @@ Server::Server(
+@@ -360,6 +360,8 @@ Server::Server(
  			"Valid received packets processed");
-
+ 
  	m_lag_gauge->set(g_settings->getFloat("dedicated_server_step"));
 +
 +	m_threadpool = new ThreadPool(8);
  }
-
+ 
  Server::~Server()
-@@ -324,6 +326,7 @@ Server::~Server()
- 	if (m_thread) {
- 		stop();
- 		delete m_thread;
-+		delete m_threadpool;
- 	}
-
- 	// Delete things in the reverse order of creation
-@@ -2380,12 +2383,24 @@ void Server::SendBlocks(float dtime)
+@@ -2457,12 +2459,24 @@ void Server::SendBlocks(float dtime)
  		if (!client)
  			continue;
-
+ 
 -		SendBlockNoLock(block_to_send.peer_id, block, client->serialization_version,
 -				client->net_proto_version);
 +		m_threadpool->enqueue(
@@ -34,7 +26,7 @@ index 16e026ce..b09e55f1 100644
 +				client->net_proto_version
 +			);
 +		});
-
+ 
  		client->SentBlock(block_to_send.pos);
  		total_sending++;
  	}
@@ -45,23 +37,23 @@ index 16e026ce..b09e55f1 100644
 +
  	m_clients.unlock();
  }
-
+ 
 diff --git a/src/server.h b/src/server.h
-index 7a1de937..a1fc7c12 100644
+index 1fd62a1f0..2baa5a97f 100644
 --- a/src/server.h
 +++ b/src/server.h
-@@ -41,6 +41,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
+@@ -43,6 +43,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
  #include <list>
  #include <map>
  #include <vector>
 +#include "util/ThreadPool.h"
-
+ 
  class ChatEvent;
  struct ChatEventChat;
-@@ -587,6 +588,9 @@ class Server : public con::PeerHandler, public MapEventReceiver,
- 	// The server mainly operates in this thread
+@@ -584,6 +585,9 @@ class Server : public con::PeerHandler, public MapEventReceiver,
  	ServerThread *m_thread = nullptr;
-
+ 	MapThread *m_map_thread = nullptr;
+ 
 +	// Worker thread pool
 +	ThreadPool *m_threadpool = nullptr;
 +
@@ -70,7 +62,7 @@ index 7a1de937..a1fc7c12 100644
  	*/
 diff --git a/src/util/ThreadPool.h b/src/util/ThreadPool.h
 new file mode 100644
-index 00000000..bedb00cc
+index 000000000..bedb00cc3
 --- /dev/null
 +++ b/src/util/ThreadPool.h
 @@ -0,0 +1,103 @@
