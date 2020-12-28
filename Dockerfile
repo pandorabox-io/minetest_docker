@@ -4,8 +4,8 @@ FROM alpine:3.12.3
 ENV GAME_BRANCH=5.3.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=async_save
-ENV ENGINE_REPO=https://github.com/lhofhansl/minetest
+ENV ENGINE_BRANCH=55dba1bc6d90c90ddd77d60f4760e34e28a6382f
+ENV ENGINE_REPO=https://github.com/minetest/minetest
 
 # RelWithDebInfo
 # Release
@@ -36,7 +36,9 @@ RUN cd /git && git clone --depth 1 https://github.com/libspatialindex/libspatial
   cmake . && make -j4 && make install
 
 # download minetest engine
-RUN cd /git && git clone --depth 1 ${ENGINE_REPO} minetest -b ${ENGINE_BRANCH}
+RUN cd /git && git clone ${ENGINE_REPO} minetest && \
+	cd minetest && \
+	git checkout ${ENGINE_BRANCH}
 
 # minetest game
 RUN cd /git/minetest/ && rm -rf games/minetest_game && \
