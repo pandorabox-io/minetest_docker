@@ -1,8 +1,16 @@
 diff --git a/src/server.cpp b/src/server.cpp
-index 90496129e..911cb86a2 100644
+index 90496129e..1c03852af 100644
 --- a/src/server.cpp
 +++ b/src/server.cpp
-@@ -548,7 +548,11 @@ void Server::AsyncRunStep(bool initial_step)
+@@ -539,6 +539,7 @@ void Server::step(float dtime)
+ 
+ void Server::AsyncRunStep(bool initial_step)
+ {
++	static int send_block_delay = 0;
+ 
+ 	float dtime;
+ 	{
+@@ -548,7 +549,11 @@ void Server::AsyncRunStep(bool initial_step)
  
  	{
  		// Send blocks to clients
