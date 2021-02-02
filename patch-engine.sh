@@ -7,6 +7,9 @@ echo sqlite3 patch, issue: https://github.com/pandorabox-io/pandorabox.io/issues
 echo inserts or updates auth data
 cat patches/minetest_auth_insert_race.patch | patch -p1
 
+echo Deferrend mapsending patch
+cat patches/minetest_deferred_send.patch | patch -p1
+
 echo Metrics and async mapsending
 cat patches/minetest_metrics_and_mapsending.patch | patch -p1
 
