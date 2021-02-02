@@ -1,0 +1,464 @@
+diff --git a/src/server.cpp b/src/server.cpp
+index 90496129e..ee03e62e3 100644
+--- a/src/server.cpp
++++ b/src/server.cpp
+@@ -271,7 +271,39 @@ Server::Server(
+ 			"minetest_core_server_packet_recv_processed",
+ 			"Valid received packets processed");
+ 
++	m_sendblocks_time = m_metrics_backend->addCounter(
++			"minetest_core_sendblockstime",
++			"Microseconds used for block sending"
++	);
++
++	m_sent_blocks = m_metrics_backend->addCounter(
++			"minetest_core_sent_blocks",
++			"number of sent blocks"
++	);
++
++	m_env_step_time = m_metrics_backend->addCounter(
++			"minetest_core_step_time",
++			"step time count"
++	);
++
++	m_map_timer_unload_time = m_metrics_backend->addCounter(
++			"minetest_core_timer_unload_time",
++			"map timer and unload time"
++	);
++
++	m_mapedit_time = m_metrics_backend->addCounter(
++			"minetest_core_mapedit_time",
++			"map edit time"
++	);
++
++	m_mapsave_time = m_metrics_backend->addCounter(
++			"minetest_core_mapsave_time",
++			"map save time"
++	);
++
+ 	m_lag_gauge->set(g_settings->getFloat("dedicated_server_step"));
++
++	m_threadpool = new ThreadPool(8);
+ }
+ 
+ Server::~Server()
+@@ -440,7 +472,7 @@ void Server::init()
+ 	m_craftdef->initHashes(this);
+ 
+ 	// Initialize Environment
+-	m_env = new ServerEnvironment(servermap, m_script, this, m_path_world);
++	m_env = new ServerEnvironment(servermap, m_script, this, m_path_world, m_metrics_backend.get());
+ 
+ 	m_inventory_mgr->setEnv(m_env);
+ 	m_clients.setEnv(m_env);
+@@ -600,18 +632,28 @@ void Server::AsyncRunStep(bool initial_step)
+ 		}
+ 		m_env->reportMaxLagEstimate(max_lag);
+ 		// Step environment
++
++		u64 start_time = porting::getTimeUs();
+ 		m_env->step(dtime);
++		u64 end_time = porting::getTimeUs();
++
++		m_env_step_time->increment(end_time - start_time);
+ 	}
+ 
+ 	static const float map_timer_and_unload_dtime = 2.92;
+ 	if(m_map_timer_and_unload_interval.step(dtime, map_timer_and_unload_dtime))
+ 	{
++		u64 start_time = porting::getTimeUs();
+ 		MutexAutoLock lock(m_env_mutex);
+ 		// Run Map's timers and unload unused data
+ 		ScopeProfiler sp(g_profiler, "Server: map timer and unload");
+ 		m_env->getMap().timerUpdate(map_timer_and_unload_dtime,
+ 			g_settings->getFloat("server_unload_unused_data_timeout"),
+ 			U32_MAX);
++
++		u64 end_time = porting::getTimeUs();
++
++		m_map_timer_unload_time->increment(end_time - start_time);
+ 	}
+ 
+ 	/*
+@@ -832,6 +874,8 @@ void Server::AsyncRunStep(bool initial_step)
+ 		Send queued-for-sending map edit events.
+ 	*/
+ 	{
++		u64 start_time = porting::getTimeUs();
++
+ 		// We will be accessing the environment
+ 		MutexAutoLock lock(m_env_mutex);
+ 
+@@ -932,6 +976,9 @@ void Server::AsyncRunStep(bool initial_step)
+ 		// Send all metadata updates
+ 		if (node_meta_updates.size())
+ 			sendMetadataChanged(node_meta_updates);
++
++		u64 end_time = porting::getTimeUs();
++		m_mapedit_time->increment(end_time - start_time);
+ 	}
+ 
+ 	/*
+@@ -950,6 +997,8 @@ void Server::AsyncRunStep(bool initial_step)
+ 
+ 	// Save map, players and auth stuff
+ 	{
++		u64 start_time = porting::getTimeUs();
++
+ 		float &counter = m_savemap_timer;
+ 		counter += dtime;
+ 		static thread_local const float save_interval =
+@@ -974,6 +1023,9 @@ void Server::AsyncRunStep(bool initial_step)
+ 			// Save environment metadata
+ 			m_env->saveMeta();
+ 		}
++
++		u64 end_time = porting::getTimeUs();
++		m_mapsave_time->increment(end_time - start_time);
+ 	}
+ 
+ 	m_shutdown_state.tick(dtime, this);
+@@ -2341,6 +2393,7 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
+ 
+ void Server::SendBlocks(float dtime)
+ {
++	u64 start_time = porting::getTimeUs();
+ 	MutexAutoLock envlock(m_env_mutex);
+ 	//TODO check if one big lock could be faster then multiple small ones
+ 
+@@ -2394,12 +2447,28 @@ void Server::SendBlocks(float dtime)
+ 		if (!client)
+ 			continue;
+ 
+-		SendBlockNoLock(block_to_send.peer_id, block, client->serialization_version,
+-				client->net_proto_version);
++		m_threadpool->enqueue(
++			[this, block_to_send, block, client](){
++			SendBlockNoLock(
++				block_to_send.peer_id,
++				block,
++				client->serialization_version,
++				client->net_proto_version
++			);
++		});
+ 
+ 		client->SentBlock(block_to_send.pos);
+ 		total_sending++;
++		m_sent_blocks->increment(1);
+ 	}
++
++	while (!m_threadpool->empty()){
++		sleep_ms(1);
++	}
++
++	u64 end_time = porting::getTimeUs();
++	m_sendblocks_time->increment(end_time - start_time);
++
+ 	m_clients.unlock();
+ }
+ 
+diff --git a/src/server.h b/src/server.h
+index 5c143a657..fef99325e 100644
+--- a/src/server.h
++++ b/src/server.h
+@@ -43,6 +43,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
+ #include <list>
+ #include <map>
+ #include <vector>
++#include "util/ThreadPool.h"
+ 
+ class ChatEvent;
+ struct ChatEventChat;
+@@ -579,6 +580,9 @@ class Server : public con::PeerHandler, public MapEventReceiver,
+ 
+ 	std::unordered_map<std::string, Translations> server_translations;
+ 
++	// Worker thread pool
++	ThreadPool *m_threadpool = nullptr;
++
+ 	/*
+ 		Threads
+ 	*/
+@@ -680,6 +684,13 @@ class Server : public con::PeerHandler, public MapEventReceiver,
+ 	MetricCounterPtr m_aom_buffer_counter;
+ 	MetricCounterPtr m_packet_recv_counter;
+ 	MetricCounterPtr m_packet_recv_processed_counter;
++
++	MetricCounterPtr m_sent_blocks;
++	MetricCounterPtr m_sendblocks_time;
++	MetricCounterPtr m_env_step_time;
++	MetricCounterPtr m_map_timer_unload_time;
++	MetricCounterPtr m_mapedit_time;
++	MetricCounterPtr m_mapsave_time;
+ };
+ 
+ /*
+diff --git a/src/serverenvironment.cpp b/src/serverenvironment.cpp
+index 3d9ba132b..13be90641 100644
+--- a/src/serverenvironment.cpp
++++ b/src/serverenvironment.cpp
+@@ -393,13 +393,14 @@ static std::random_device seed;
+ 
+ ServerEnvironment::ServerEnvironment(ServerMap *map,
+ 	ServerScripting *scriptIface, Server *server,
+-	const std::string &path_world):
++	const std::string &path_world, MetricsBackend* m_metrics_backend):
+ 	Environment(server),
+ 	m_map(map),
+ 	m_script(scriptIface),
+ 	m_server(server),
+ 	m_path_world(path_world),
+-	m_rgen(seed())
++	m_rgen(seed()),
++	m_metrics_backend(m_metrics_backend)
+ {
+ 	// Determine which database backend to use
+ 	std::string conf_path = path_world + DIR_DELIM + "world.mt";
+@@ -408,6 +409,31 @@ ServerEnvironment::ServerEnvironment(ServerMap *map,
+ 	std::string player_backend_name = "sqlite3";
+ 	std::string auth_backend_name = "sqlite3";
+ 
++	m_playermove_time = m_metrics_backend->addCounter(
++		"minetest_core_env_playermove_time",
++		"Env playermove time"
++	);
++
++	m_active_block_mgmt_time = m_metrics_backend->addCounter(
++		"minetest_core_env_active_block_mgmt_time",
++		"Env playermove time"
++	);
++
++	m_nodetimers_time = m_metrics_backend->addCounter(
++		"minetest_core_env_nodetimers_time",
++		"Env nodetimers time"
++	);
++
++	m_abm_time = m_metrics_backend->addCounter(
++		"minetest_core_env_abm_time",
++		"Env abm time"
++	);
++
++	m_globalstep_time = m_metrics_backend->addCounter(
++		"minetest_core_env_globalstep_time",
++		"Env globalstep time"
++	);
++
+ 	bool succeeded = conf.readConfigFile(conf_path.c_str());
+ 
+ 	// If we open world.mt read the backend configurations.
+@@ -1301,6 +1327,7 @@ void ServerEnvironment::step(float dtime)
+ 		Handle players
+ 	*/
+ 	{
++		u64 start_time = porting::getTimeUs();
+ 		ScopeProfiler sp(g_profiler, "ServerEnv: move players", SPT_AVG);
+ 		for (RemotePlayer *player : m_players) {
+ 			// Ignore disconnected players
+@@ -1310,12 +1337,15 @@ void ServerEnvironment::step(float dtime)
+ 			// Move
+ 			player->move(dtime, this, 100 * BS);
+ 		}
++		u64 end_time = porting::getTimeUs();
++		m_playermove_time->increment(end_time - start_time);
+ 	}
+ 
+ 	/*
+ 		Manage active block list
+ 	*/
+ 	if (m_active_blocks_management_interval.step(dtime, m_cache_active_block_mgmt_interval)) {
++		u64 start_time = porting::getTimeUs();
+ 		ScopeProfiler sp(g_profiler, "ServerEnv: update active blocks", SPT_AVG);
+ 		/*
+ 			Get player block positions
+@@ -1376,12 +1406,16 @@ void ServerEnvironment::step(float dtime)
+ 
+ 			activateBlock(block);
+ 		}
++
++		u64 end_time = porting::getTimeUs();
++		m_active_block_mgmt_time->increment(end_time - start_time);
+ 	}
+ 
+ 	/*
+ 		Mess around in active blocks
+ 	*/
+ 	if (m_active_blocks_nodemetadata_interval.step(dtime, m_cache_nodetimer_interval)) {
++		u64 start_time = porting::getTimeUs();
+ 		ScopeProfiler sp(g_profiler, "ServerEnv: Run node timers", SPT_AVG);
+ 
+ 		float dtime = m_cache_nodetimer_interval;
+@@ -1417,9 +1451,12 @@ void ServerEnvironment::step(float dtime)
+ 				}
+ 			}
+ 		}
++		u64 end_time = porting::getTimeUs();
++		m_nodetimers_time->increment(end_time - start_time);
+ 	}
+ 
+ 	if (m_active_block_modifier_interval.step(dtime, m_cache_abm_interval)) {
++		u64 start_time = porting::getTimeUs();
+ 		ScopeProfiler sp(g_profiler, "SEnv: modify in blocks avg per interval", SPT_AVG);
+ 		TimeTaker timer("modify in active blocks per interval");
+ 
+@@ -1468,12 +1505,17 @@ void ServerEnvironment::step(float dtime)
+ 		g_profiler->avg("ServerEnv: ABMs run", abms_run);
+ 
+ 		timer.stop(true);
++		u64 end_time = porting::getTimeUs();
++		m_abm_time->increment(end_time - start_time);
+ 	}
+ 
+ 	/*
+ 		Step script environment (run global on_step())
+ 	*/
++	u64 start_time = porting::getTimeUs();
+ 	m_script->environment_Step(dtime);
++	u64 end_time = porting::getTimeUs();
++	m_globalstep_time->increment(end_time - start_time);
+ 
+ 	/*
+ 		Step active objects
+diff --git a/src/serverenvironment.h b/src/serverenvironment.h
+index a11c814ed..f2589fac2 100644
+--- a/src/serverenvironment.h
++++ b/src/serverenvironment.h
+@@ -24,7 +24,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
+ #include "mapnode.h"
+ #include "settings.h"
+ #include "server/activeobjectmgr.h"
++#include "util/metricsbackend.h"
+ #include "util/numeric.h"
++#include "porting.h"
+ #include <set>
+ #include <random>
+ 
+@@ -194,7 +196,7 @@ class ServerEnvironment : public Environment
+ {
+ public:
+ 	ServerEnvironment(ServerMap *map, ServerScripting *scriptIface,
+-		Server *server, const std::string &path_world);
++		Server *server, const std::string &path_world, MetricsBackend* m_metrics_backend);
+ 	~ServerEnvironment();
+ 
+ 	Map & getMap();
+@@ -475,4 +477,11 @@ class ServerEnvironment : public Environment
+ 	std::unordered_map<u32, u16> m_particle_spawner_attachments;
+ 
+ 	ServerActiveObject* createSAO(ActiveObjectType type, v3f pos, const std::string &data);
++
++	MetricsBackend* m_metrics_backend;
++	MetricCounterPtr m_playermove_time;
++	MetricCounterPtr m_active_block_mgmt_time;
++	MetricCounterPtr m_nodetimers_time;
++	MetricCounterPtr m_abm_time;
++	MetricCounterPtr m_globalstep_time;
+ };
+diff --git a/src/util/ThreadPool.h b/src/util/ThreadPool.h
+new file mode 100644
+index 000000000..bedb00cc3
+--- /dev/null
++++ b/src/util/ThreadPool.h
+@@ -0,0 +1,103 @@
++#ifndef THREAD_POOL_H
++#define THREAD_POOL_H
++
++#include <vector>
++#include <queue>
++#include <memory>
++#include <thread>
++#include <mutex>
++#include <condition_variable>
++#include <future>
++#include <functional>
++#include <stdexcept>
++
++class ThreadPool {
++public:
++    ThreadPool(size_t);
++    template<class F, class... Args>
++    auto enqueue(F&& f, Args&&... args)
++        -> std::future<typename std::result_of<F(Args...)>::type>;
++    ~ThreadPool();
++		bool empty();
++private:
++    // need to keep track of threads so we can join them
++    std::vector< std::thread > workers;
++    // the task queue
++    std::queue< std::function<void()> > tasks;
++
++    // synchronization
++    std::mutex queue_mutex;
++    std::condition_variable condition;
++    bool stop;
++};
++
++// the constructor just launches some amount of workers
++inline ThreadPool::ThreadPool(size_t threads)
++    :   stop(false)
++{
++    for(size_t i = 0;i<threads;++i)
++        workers.emplace_back(
++            [this]
++            {
++                for(;;)
++                {
++                    std::function<void()> task;
++
++                    {
++                        std::unique_lock<std::mutex> lock(this->queue_mutex);
++                        this->condition.wait(lock,
++                            [this]{ return this->stop || !this->tasks.empty(); });
++                        if(this->stop && this->tasks.empty())
++                            return;
++                        task = std::move(this->tasks.front());
++                        this->tasks.pop();
++                    }
++
++                    task();
++                }
++            }
++        );
++}
++
++// add new work item to the pool
++template<class F, class... Args>
++auto ThreadPool::enqueue(F&& f, Args&&... args)
++    -> std::future<typename std::result_of<F(Args...)>::type>
++{
++    using return_type = typename std::result_of<F(Args...)>::type;
++
++    auto task = std::make_shared< std::packaged_task<return_type()> >(
++            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
++        );
++
++    std::future<return_type> res = task->get_future();
++    {
++        std::unique_lock<std::mutex> lock(queue_mutex);
++
++        // don't allow enqueueing after stopping the pool
++        if(stop)
++            throw std::runtime_error("enqueue on stopped ThreadPool");
++
++        tasks.emplace([task](){ (*task)(); });
++    }
++    condition.notify_one();
++    return res;
++}
++
++inline bool ThreadPool::empty() {
++	return this->tasks.empty();
++}
++
++// the destructor joins all threads
++inline ThreadPool::~ThreadPool()
++{
++    {
++        std::unique_lock<std::mutex> lock(queue_mutex);
++        stop = true;
++    }
++    condition.notify_all();
++    for(std::thread &worker: workers)
++        worker.join();
++}
++
++#endif

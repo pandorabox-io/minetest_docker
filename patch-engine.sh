@@ -7,6 +7,9 @@ echo sqlite3 patch, issue: https://github.com/pandorabox-io/pandorabox.io/issues
 echo inserts or updates auth data
 cat patches/minetest_auth_insert_race.patch | patch -p1
 
+echo Metrics and async mapsending
+cat patches/minetest_metrics_and_mapsending.patch | patch -p1
+
 #echo async map sending with a threadpool
 #cat patches/minetest_async_mapsending.patch | patch -p1
 
@@ -16,8 +19,8 @@ cat patches/minetest_auth_insert_race.patch | patch -p1
 echo "profiler expose: minetest.get_profiler_value(name)"
 cat patches/lua_profiler.patch | patch -p1
 
-echo Additional engine metrics
-cat patches/minetest_metrics.patch | patch -p1
+#echo Additional engine metrics
+#cat patches/minetest_metrics.patch | patch -p1
 
 #echo async pg map and player save
 #cat patches/minetest_async_pg.patch | patch -p1
