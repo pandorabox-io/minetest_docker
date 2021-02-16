@@ -1,7 +1,17 @@
 
 minetest docker builder
+------------
+
+Customized and patched minetest engine in a container
 
 ![docker](https://github.com/pandorabox-io/minetest_docker/workflows/docker/badge.svg)
+
+# Features
+
+* Postgresql support
+* Prometheus metrics support
+* Async mapsending
+* Various fixes / perf. improvements
 
 # Images
 
@@ -25,29 +35,3 @@ services:
    - "./data/crashlogs:/crashlogs"
    - "./data/minetest/debug.txt:/root/.minetest/debug.txt"
 ```
-
-# Available patches
-
-In the `patches` folder
-
-## minetest_async_pg.patch
-
-Async postgres map- and player-insert/update (performance)
-
-## sendmove_null-check.patch
-
-Custom fix for https://github.com/minetest/minetest/issues/9387
-
-## lua_profiler.patch
-
-Exposes the engine profiler with `minetest.get_profiler_value()`
-
-## old_pandorabox.patch (deprecated)
-
-Async pg and various prometheus monitoring thing (don't use that one!)
-
-
-# Branches/Tags
-
-* stable-5
-* master
