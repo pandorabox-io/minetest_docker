@@ -18,3 +18,9 @@ cat patches/lua_profiler.patch | patch -p1
 
 echo async pg map and player save
 cat patches/minetest_async_pg.patch | patch -p1
+
+echo "Deferred mapsending"
+cat patches/minetest_deferred_send.patch | patch -p1
+
+echo "Disable unneeded timestamps"
+cat patches/disable_timestamps.patch | patch -p1
