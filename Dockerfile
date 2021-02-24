@@ -1,10 +1,10 @@
 # Stage 1 build
 FROM alpine:3.13.1
 
-ENV GAME_BRANCH=5.3.0
+ENV GAME_BRANCH=5.4.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=7832b6843e73410e15677d1324d582b4b7c7e824
+ENV ENGINE_BRANCH=5.4.0
 ENV ENGINE_REPO=https://github.com/minetest/minetest
 
 # RelWithDebInfo

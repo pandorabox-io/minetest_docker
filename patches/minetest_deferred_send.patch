@@ -16,7 +16,7 @@ index 90496129e..1c03852af 100644
  		// Send blocks to clients
 -		SendBlocks(dtime);
 +		send_block_delay++;
-+		if (send_block_delay > 2){
++		if (send_block_delay > 1){
 +			SendBlocks(dtime);
 +			send_block_delay = 0;
 +		}
