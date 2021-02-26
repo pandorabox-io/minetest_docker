@@ -8,6 +8,8 @@ services:
    - "8080:8080"
   depends_on:
    - "postgres"
+  environment:
+   ADDITIONAL_PARAMS: --verbose
   volumes:
    - "minetest_data:/data"
    - "minetest_home_data:/root/.minetest"

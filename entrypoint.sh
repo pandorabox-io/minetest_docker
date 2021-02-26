@@ -3,7 +3,7 @@
 mkdir -p /crashlogs
 ulimit -c unlimited
 
-minetestserver --config /data/minetest.conf --world /data/world/ --quiet &
+minetestserver ${ADDITIONAL_PARAMS} --config /data/minetest.conf --world /data/world/ --quiet &
 pid=$!
 
 sleep inf &
