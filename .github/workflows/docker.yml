@@ -1,6 +1,14 @@
 name: docker
 
-on: [push]
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "patches/**"
+      - "Dockerfile"
+      - "entrypoint.sh"
+      - "patch-engine.sh"
 
 jobs:
   build:
