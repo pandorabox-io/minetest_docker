@@ -14,6 +14,7 @@ services:
    - "crashlogs:/crashlogs"
    - "./data/minetest.conf:/data/minetest.conf:ro"
    - "./data/world/world.postgres.mt:/data/world/world.mt:ro"
+   - "./data/worldmods:/data/world/worldmods"
 
  postgres:
   image: postgres:13.2-alpine
