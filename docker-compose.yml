@@ -9,15 +9,35 @@ services:
   depends_on:
    - "postgres"
   volumes:
-   - "./data/minetest:/data"
+   - "minetest_data:/data"
+   - "minetest_home_data:/root/.minetest"
+   - "crashlogs:/crashlogs"
    - "./data/minetest.conf:/data/minetest.conf:ro"
    - "./data/world/world.postgres.mt:/data/world/world.mt:ro"
-   - "./data/crashlogs:/crashlogs"
-   - "./data/minetest/root:/root/.minetest"
 
  postgres:
   image: postgres:13.2-alpine
   environment:
    POSTGRES_PASSWORD: enter
   volumes:
-   - "./data/postgres:/var/lib/postgresql/data"
+   - "postgres_data:/var/lib/postgresql/data"
+
+ prometheus:
+  image: prom/prometheus:v2.25.0
+  restart: always
+  ports:
+   - "9090:9090"
+  volumes:
+   - "prometheus_data:/prometheus"
+   - "./data/prometheus.yml:/etc/prometheus/prometheus.yml"
+  command:
+   - '--config.file=/etc/prometheus/prometheus.yml'
+   - '--storage.tsdb.path=/prometheus'
+   - '--storage.tsdb.retention.time=72h'
+
+volumes:
+  prometheus_data: {}
+  postgres_data: {}
+  crashlogs: {}
+  minetest_data: {}
+  minetest_home_data: {}
