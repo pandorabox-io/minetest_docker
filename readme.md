@@ -10,8 +10,10 @@ Customized and patched minetest engine in a container
 
 * Postgresql support
 * Prometheus metrics support
-* Async mapsending
+* Async mapsending and saving
 * Various fixes / perf. improvements
+
+<img src="pics/yoda.jpg"/>
 
 # Images
 
@@ -26,7 +28,7 @@ version: "2"
 
 services:
  minetest:
-  image: buckaroobanzay/minetest:backport-5
+  image: buckaroobanzay/minetest:latest
   restart: always
   ports:
    - "30000:30000/udp"
