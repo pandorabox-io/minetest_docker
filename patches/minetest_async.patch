@@ -27,7 +27,7 @@ index f47deda33..b0628cb5f 100644
  
  class MapDatabasePostgreSQL : private Database_PostgreSQL, public MapDatabase
 diff --git a/src/map.cpp b/src/map.cpp
-index 7c59edbaa..12cb0e182 100644
+index 7c59edbaa..085ebb06a 100644
 --- a/src/map.cpp
 +++ b/src/map.cpp
 @@ -1189,6 +1189,8 @@ ServerMap::ServerMap(const std::string &savedir, IGameDef *gamedef,
@@ -51,7 +51,7 @@ index 7c59edbaa..12cb0e182 100644
  	/*
  		Close database if it was opened
  	*/
-@@ -1726,16 +1733,36 @@ bool ServerMap::saveBlock(MapBlock *block, MapDatabase *db, int compression_leve
+@@ -1726,16 +1733,39 @@ bool ServerMap::saveBlock(MapBlock *block, MapDatabase *db, int compression_leve
  		[0] u8 serialization version
  		[1] data
  	*/
@@ -72,9 +72,10 @@ index 7c59edbaa..12cb0e182 100644
 +	block->serialize(os, version, true, 0);
 +	std::string s = os.str();
 +	MapBlock *block_copy = new MapBlock(block);
-+
++	/*
 +	m_threadpool->enqueue(
 +		[this, s, version, block_copy, compression_level, db](){
++		*/
 +			std::istringstream iss(s);
 +			block_copy->deSerialize(iss, version, true);
 +
@@ -85,7 +86,9 @@ index 7c59edbaa..12cb0e182 100644
 +
 +			std::lock_guard<std::mutex> guard(m_saveblock_mutex);
 +			db->saveBlock(block_copy->getPos(), net_s);
++			/*
 +	});
++	*/
 +
 +	// We just wrote it to the disk so clear modified flag
 +	block->resetModified();
