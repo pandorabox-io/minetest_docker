@@ -192,7 +192,7 @@ index 65db02300..28c5b1406 100644
  
  	/*
 diff --git a/src/server.cpp b/src/server.cpp
-index d37d847a9..c8f4b535c 100644
+index d37d847a9..efb5388a9 100644
 --- a/src/server.cpp
 +++ b/src/server.cpp
 @@ -250,6 +250,8 @@ Server::Server(
@@ -337,7 +337,7 @@ index d37d847a9..c8f4b535c 100644
  	std::ostringstream os(std::ios_base::binary);
  	block->serialize(os, ver, false, net_compression_level);
  	block->serializeNetworkSpecific(os);
-@@ -2353,10 +2410,35 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
+@@ -2353,10 +2410,39 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
  	pkt << block->getPos();
  	pkt.putRawString(s.c_str(), s.size());
  	Send(&pkt);
@@ -348,8 +348,10 @@ index d37d847a9..c8f4b535c 100644
 +	std::string s = os.str();
 +	MapBlock *block_copy = new MapBlock(block);
 +
++	/*
 +	m_threadpool->enqueue(
 +		[this, s, ver, peer_id, block_copy](){
++		*/
 +			std::istringstream iss(s);
 +			block_copy->deSerialize(iss, SER_FMT_VER_HIGHEST_WRITE, true);
 +
@@ -364,7 +366,9 @@ index d37d847a9..c8f4b535c 100644
 +			delete block_copy;
 +			pkt.putRawString(net_s.c_str(), net_s.size());
 +			Send(&pkt);
++			/*
 +	});
++	*/
  }
  
  void Server::SendBlocks(float dtime)
@@ -373,7 +377,7 @@ index d37d847a9..c8f4b535c 100644
  	MutexAutoLock envlock(m_env_mutex);
  	//TODO check if one big lock could be faster then multiple small ones
  
-@@ -2410,12 +2492,28 @@ void Server::SendBlocks(float dtime)
+@@ -2410,12 +2496,28 @@ void Server::SendBlocks(float dtime)
  		if (!client)
  			continue;
  
