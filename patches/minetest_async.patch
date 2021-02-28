@@ -161,10 +161,10 @@ index 65db02300..28c5b1406 100644
  
  	/*
 diff --git a/src/server.cpp b/src/server.cpp
-index 81cdd1f8d..64239a59c 100644
+index d37d847a9..c8f4b535c 100644
 --- a/src/server.cpp
 +++ b/src/server.cpp
-@@ -242,6 +242,8 @@ Server::Server(
+@@ -250,6 +250,8 @@ Server::Server(
  	if (!gamespec.isValid())
  		throw ServerError("Supplied invalid gamespec");
  
@@ -173,7 +173,7 @@ index 81cdd1f8d..64239a59c 100644
  #if USE_PROMETHEUS
  	m_metrics_backend = std::unique_ptr<MetricsBackend>(createPrometheusMetricsBackend());
  #else
-@@ -271,7 +273,39 @@ Server::Server(
+@@ -279,7 +281,39 @@ Server::Server(
  			"minetest_core_server_packet_recv_processed",
  			"Valid received packets processed");
  
@@ -213,7 +213,7 @@ index 81cdd1f8d..64239a59c 100644
  }
  
  Server::~Server()
-@@ -339,6 +373,8 @@ Server::~Server()
+@@ -347,6 +381,8 @@ Server::~Server()
  		delete m_thread;
  	}
  
@@ -222,7 +222,7 @@ index 81cdd1f8d..64239a59c 100644
  	// Delete things in the reverse order of creation
  	delete m_emerge;
  	delete m_env;
-@@ -443,7 +479,7 @@ void Server::init()
+@@ -451,7 +487,7 @@ void Server::init()
  
  	// Initialize Environment
  	m_startup_server_map = nullptr; // Ownership moved to ServerEnvironment
@@ -231,7 +231,7 @@ index 81cdd1f8d..64239a59c 100644
  
  	m_inventory_mgr->setEnv(m_env);
  	m_clients.setEnv(m_env);
-@@ -603,18 +639,28 @@ void Server::AsyncRunStep(bool initial_step)
+@@ -611,18 +647,28 @@ void Server::AsyncRunStep(bool initial_step)
  		}
  		m_env->reportMaxLagEstimate(max_lag);
  		// Step environment
@@ -260,7 +260,7 @@ index 81cdd1f8d..64239a59c 100644
  	}
  
  	/*
-@@ -835,6 +881,8 @@ void Server::AsyncRunStep(bool initial_step)
+@@ -843,6 +889,8 @@ void Server::AsyncRunStep(bool initial_step)
  		Send queued-for-sending map edit events.
  	*/
  	{
@@ -269,7 +269,7 @@ index 81cdd1f8d..64239a59c 100644
  		// We will be accessing the environment
  		MutexAutoLock lock(m_env_mutex);
  
-@@ -935,6 +983,9 @@ void Server::AsyncRunStep(bool initial_step)
+@@ -943,6 +991,9 @@ void Server::AsyncRunStep(bool initial_step)
  		// Send all metadata updates
  		if (node_meta_updates.size())
  			sendMetadataChanged(node_meta_updates);
@@ -279,7 +279,7 @@ index 81cdd1f8d..64239a59c 100644
  	}
  
  	/*
-@@ -953,6 +1004,8 @@ void Server::AsyncRunStep(bool initial_step)
+@@ -961,6 +1012,8 @@ void Server::AsyncRunStep(bool initial_step)
  
  	// Save map, players and auth stuff
  	{
@@ -288,7 +288,7 @@ index 81cdd1f8d..64239a59c 100644
  		float &counter = m_savemap_timer;
  		counter += dtime;
  		static thread_local const float save_interval =
-@@ -977,6 +1030,9 @@ void Server::AsyncRunStep(bool initial_step)
+@@ -985,6 +1038,9 @@ void Server::AsyncRunStep(bool initial_step)
  			// Save environment metadata
  			m_env->saveMeta();
  		}
@@ -298,7 +298,7 @@ index 81cdd1f8d..64239a59c 100644
  	}
  
  	m_shutdown_state.tick(dtime, this);
-@@ -2334,6 +2390,7 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
+@@ -2343,6 +2399,7 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
  		Create a packet with the block in the right format
  	*/
  	thread_local const int net_compression_level = rangelim(g_settings->getS16("map_compression_level_net"), -1, 9);
@@ -306,7 +306,7 @@ index 81cdd1f8d..64239a59c 100644
  	std::ostringstream os(std::ios_base::binary);
  	block->serialize(os, ver, false, net_compression_level);
  	block->serializeNetworkSpecific(os);
-@@ -2344,10 +2401,35 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
+@@ -2353,10 +2410,35 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
  	pkt << block->getPos();
  	pkt.putRawString(s.c_str(), s.size());
  	Send(&pkt);
@@ -331,7 +331,7 @@ index 81cdd1f8d..64239a59c 100644
 +
 +			pkt << block_copy->getPos();
 +			delete block_copy;
-+			pkt.putRawString(net_s.c_str(), s.size());
++			pkt.putRawString(net_s.c_str(), net_s.size());
 +			Send(&pkt);
 +	});
  }
@@ -342,7 +342,7 @@ index 81cdd1f8d..64239a59c 100644
  	MutexAutoLock envlock(m_env_mutex);
  	//TODO check if one big lock could be faster then multiple small ones
  
-@@ -2401,12 +2483,28 @@ void Server::SendBlocks(float dtime)
+@@ -2410,12 +2492,28 @@ void Server::SendBlocks(float dtime)
  		if (!client)
  			continue;
  
@@ -410,7 +410,7 @@ index 9857215d0..833e8bf91 100644
  
  /*
 diff --git a/src/serverenvironment.cpp b/src/serverenvironment.cpp
-index 3d9ba132b..13be90641 100644
+index 99e815bd4..dd71760e7 100644
 --- a/src/serverenvironment.cpp
 +++ b/src/serverenvironment.cpp
 @@ -393,13 +393,14 @@ static std::random_device seed;
@@ -503,7 +503,7 @@ index 3d9ba132b..13be90641 100644
  		ScopeProfiler sp(g_profiler, "ServerEnv: Run node timers", SPT_AVG);
  
  		float dtime = m_cache_nodetimer_interval;
-@@ -1417,9 +1451,12 @@ void ServerEnvironment::step(float dtime)
+@@ -1419,9 +1453,12 @@ void ServerEnvironment::step(float dtime)
  				}
  			}
  		}
@@ -516,7 +516,7 @@ index 3d9ba132b..13be90641 100644
  		ScopeProfiler sp(g_profiler, "SEnv: modify in blocks avg per interval", SPT_AVG);
  		TimeTaker timer("modify in active blocks per interval");
  
-@@ -1468,12 +1505,17 @@ void ServerEnvironment::step(float dtime)
+@@ -1470,12 +1507,17 @@ void ServerEnvironment::step(float dtime)
  		g_profiler->avg("ServerEnv: ABMs run", abms_run);
  
  		timer.stop(true);
