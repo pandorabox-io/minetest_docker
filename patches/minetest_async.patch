@@ -1,3 +1,31 @@
+diff --git a/src/database/database-postgresql.h b/src/database/database-postgresql.h
+index f47deda33..b0628cb5f 100644
+--- a/src/database/database-postgresql.h
++++ b/src/database/database-postgresql.h
+@@ -20,6 +20,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
+ #pragma once
+ 
+ #include <string>
++#include <mutex>
+ #include <libpq-fe.h>
+ #include "database.h"
+ #include "util/basic_macros.h"
+@@ -70,6 +71,7 @@ class Database_PostgreSQL: public Database
+ 		const int *paramsLengths = NULL, const int *paramsFormats = NULL,
+ 		bool clear = true, bool nobinary = true)
+ 	{
++		std::lock_guard<std::mutex> guard(m_conn_mutex);
+ 		return checkResults(PQexecPrepared(m_conn, stmtName, paramsNumber,
+ 			(const char* const*) params, paramsLengths, paramsFormats,
+ 			nobinary ? 1 : 0), clear);
+@@ -106,6 +108,7 @@ class Database_PostgreSQL: public Database
+ 	std::string m_connect_string;
+ 	PGconn *m_conn = nullptr;
+ 	int m_pgversion = 0;
++	std::mutex m_conn_mutex;
+ };
+ 
+ class MapDatabasePostgreSQL : private Database_PostgreSQL, public MapDatabase
 diff --git a/src/map.cpp b/src/map.cpp
 index 7c59edbaa..12cb0e182 100644
 --- a/src/map.cpp
