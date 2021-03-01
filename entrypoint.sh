@@ -3,6 +3,8 @@
 mkdir -p /crashlogs
 ulimit -c unlimited
 
+# gdb -ex "r" --ex "bt" --args
+
 minetestserver ${ADDITIONAL_PARAMS} --config /data/minetest.conf --world /data/world/ --quiet &
 pid=$!
 

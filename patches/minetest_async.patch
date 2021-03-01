@@ -1,3 +1,21 @@
+diff --git a/src/database/database-postgresql.cpp b/src/database/database-postgresql.cpp
+index e1bb39928..0aec551e8 100644
+--- a/src/database/database-postgresql.cpp
++++ b/src/database/database-postgresql.cpp
+@@ -152,11 +152,13 @@ void Database_PostgreSQL::createTableIfNotExists(const std::string &table_name,
+ void Database_PostgreSQL::beginSave()
+ {
+ 	verifyDatabase();
++	std::lock_guard<std::mutex> guard(m_conn_mutex);
+ 	checkResults(PQexec(m_conn, "BEGIN;"));
+ }
+ 
+ void Database_PostgreSQL::endSave()
+ {
++	std::lock_guard<std::mutex> guard(m_conn_mutex);
+ 	checkResults(PQexec(m_conn, "COMMIT;"));
+ }
+ 
 diff --git a/src/database/database-postgresql.h b/src/database/database-postgresql.h
 index f47deda33..b0628cb5f 100644
 --- a/src/database/database-postgresql.h
@@ -27,7 +45,7 @@ index f47deda33..b0628cb5f 100644
  
  class MapDatabasePostgreSQL : private Database_PostgreSQL, public MapDatabase
 diff --git a/src/map.cpp b/src/map.cpp
-index 7c59edbaa..085ebb06a 100644
+index 7c59edbaa..67d4631a3 100644
 --- a/src/map.cpp
 +++ b/src/map.cpp
 @@ -1189,6 +1189,8 @@ ServerMap::ServerMap(const std::string &savedir, IGameDef *gamedef,
@@ -51,7 +69,7 @@ index 7c59edbaa..085ebb06a 100644
  	/*
  		Close database if it was opened
  	*/
-@@ -1726,16 +1733,39 @@ bool ServerMap::saveBlock(MapBlock *block, MapDatabase *db, int compression_leve
+@@ -1726,16 +1733,41 @@ bool ServerMap::saveBlock(MapBlock *block, MapDatabase *db, int compression_leve
  		[0] u8 serialization version
  		[1] data
  	*/
@@ -61,22 +79,16 @@ index 7c59edbaa..085ebb06a 100644
  	block->serialize(o, version, true, compression_level);
 +	db->saveBlock(p3d, o.str());
 +	*/
- 
--	bool ret = db->saveBlock(p3d, o.str());
--	if (ret) {
--		// We just wrote it to the disk so clear modified flag
--		block->resetModified();
--	}
--	return ret;
++	TRACESTREAM(<<"ServerMap::saveBlock "<< PP(block->getPos()) << std::endl);
++
 +	std::ostringstream os(std::ios_base::binary);
 +	block->serialize(os, version, true, 0);
 +	std::string s = os.str();
 +	MapBlock *block_copy = new MapBlock(block);
-+	/*
 +	m_threadpool->enqueue(
 +		[this, s, version, block_copy, compression_level, db](){
-+		*/
 +			std::istringstream iss(s);
++			TRACESTREAM(<<"ServerMap::saveBlock (thread start)" << std::endl);
 +			block_copy->deSerialize(iss, version, true);
 +
 +			std::ostringstream net_os(std::ios_base::binary);
@@ -86,13 +98,21 @@ index 7c59edbaa..085ebb06a 100644
 +
 +			std::lock_guard<std::mutex> guard(m_saveblock_mutex);
 +			db->saveBlock(block_copy->getPos(), net_s);
-+			/*
++			delete block_copy;
++			TRACESTREAM(<<"ServerMap::saveBlock (thread exit)" << std::endl);
 +	});
-+	*/
 +
 +	// We just wrote it to the disk so clear modified flag
 +	block->resetModified();
 +
++	TRACESTREAM(<<"ServerMap::saveBlock (exit) "<< PP(block->getPos()) << std::endl);
+ 
+-	bool ret = db->saveBlock(p3d, o.str());
+-	if (ret) {
+-		// We just wrote it to the disk so clear modified flag
+-		block->resetModified();
+-	}
+-	return ret;
 +	return true;
  }
  
@@ -136,7 +156,7 @@ index e68795c4a..0c909589a 100644
  	std::string m_savedir;
  	bool m_map_saving_enabled;
 diff --git a/src/mapblock.cpp b/src/mapblock.cpp
-index 0ca71e643..1bed97c87 100644
+index 0ca71e643..6e7d36df6 100644
 --- a/src/mapblock.cpp
 +++ b/src/mapblock.cpp
 @@ -76,6 +76,14 @@ MapBlock::MapBlock(Map *parent, v3s16 pos, IGameDef *gamedef, bool dummy):
@@ -154,18 +174,28 @@ index 0ca71e643..1bed97c87 100644
  MapBlock::~MapBlock()
  {
  #ifndef SERVER
-@@ -252,10 +260,10 @@ s16 MapBlock::getGroundLevel(v2s16 p2d)
+@@ -252,10 +260,11 @@ s16 MapBlock::getGroundLevel(v2s16 p2d)
  // sure we can handle all content ids. But it's absolutely worth it as it's
  // a speedup of 4 for one of the major time consuming functions on storing
  // mapblocks.
 -static content_t getBlockNodeIdMapping_mapping[USHRT_MAX + 1];
++static thread_local content_t getBlockNodeIdMapping_mapping[USHRT_MAX + 1];
  static void getBlockNodeIdMapping(NameIdMapping *nimap, MapNode *nodes,
  	const NodeDefManager *nodedef)
  {
-+	content_t getBlockNodeIdMapping_mapping[USHRT_MAX + 1];
++	TRACESTREAM(<<"MapBlock::getBlockNodeIdMapping " << std::endl);
  	memset(getBlockNodeIdMapping_mapping, 0xFF, (USHRT_MAX + 1) * sizeof(content_t));
  
  	std::set<content_t> unknown_contents;
+@@ -387,6 +396,8 @@ void MapBlock::serialize(std::ostream &os, u8 version, bool disk, int compressio
+ 		MapNode *tmp_nodes = new MapNode[nodecount];
+ 		for(u32 i=0; i<nodecount; i++)
+ 			tmp_nodes[i] = data[i];
++
++		TRACESTREAM(<<"MapBlock::serialize "<< PP(this->getPos()) << " " << this << std::endl);
+ 		getBlockNodeIdMapping(&nimap, tmp_nodes, m_gamedef->ndef());
+ 
+ 		u8 content_width = 2;
 diff --git a/src/mapblock.h b/src/mapblock.h
 index 7b82301e9..470f6b415 100644
 --- a/src/mapblock.h
@@ -192,7 +222,7 @@ index 65db02300..28c5b1406 100644
  
  	/*
 diff --git a/src/server.cpp b/src/server.cpp
-index d37d847a9..efb5388a9 100644
+index d37d847a9..ce47742be 100644
 --- a/src/server.cpp
 +++ b/src/server.cpp
 @@ -250,6 +250,8 @@ Server::Server(
@@ -337,7 +367,7 @@ index d37d847a9..efb5388a9 100644
  	std::ostringstream os(std::ios_base::binary);
  	block->serialize(os, ver, false, net_compression_level);
  	block->serializeNetworkSpecific(os);
-@@ -2353,10 +2410,39 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
+@@ -2353,10 +2410,40 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
  	pkt << block->getPos();
  	pkt.putRawString(s.c_str(), s.size());
  	Send(&pkt);
@@ -348,10 +378,10 @@ index d37d847a9..efb5388a9 100644
 +	std::string s = os.str();
 +	MapBlock *block_copy = new MapBlock(block);
 +
-+	/*
++	TRACESTREAM(<<"Server::SendBlockNoLock "<< PP(block->getPos()) << "," << peer_id << std::endl);
++
 +	m_threadpool->enqueue(
 +		[this, s, ver, peer_id, block_copy](){
-+		*/
 +			std::istringstream iss(s);
 +			block_copy->deSerialize(iss, SER_FMT_VER_HIGHEST_WRITE, true);
 +
@@ -366,9 +396,10 @@ index d37d847a9..efb5388a9 100644
 +			delete block_copy;
 +			pkt.putRawString(net_s.c_str(), net_s.size());
 +			Send(&pkt);
-+			/*
 +	});
-+	*/
++
++	TRACESTREAM(<<"Server::SendBlockNoLock (exit) "<< PP(block->getPos()) << "," << peer_id << std::endl);
++
  }
  
  void Server::SendBlocks(float dtime)
@@ -377,7 +408,7 @@ index d37d847a9..efb5388a9 100644
  	MutexAutoLock envlock(m_env_mutex);
  	//TODO check if one big lock could be faster then multiple small ones
  
-@@ -2410,12 +2496,28 @@ void Server::SendBlocks(float dtime)
+@@ -2410,12 +2497,28 @@ void Server::SendBlocks(float dtime)
  		if (!client)
  			continue;
  
