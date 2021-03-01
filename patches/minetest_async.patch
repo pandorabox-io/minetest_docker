@@ -222,7 +222,7 @@ index 65db02300..28c5b1406 100644
  
  	/*
 diff --git a/src/server.cpp b/src/server.cpp
-index d37d847a9..ce47742be 100644
+index d37d847a9..0ce0b0072 100644
 --- a/src/server.cpp
 +++ b/src/server.cpp
 @@ -250,6 +250,8 @@ Server::Server(
@@ -408,30 +408,23 @@ index d37d847a9..ce47742be 100644
  	MutexAutoLock envlock(m_env_mutex);
  	//TODO check if one big lock could be faster then multiple small ones
  
-@@ -2410,12 +2497,28 @@ void Server::SendBlocks(float dtime)
+@@ -2410,12 +2497,21 @@ void Server::SendBlocks(float dtime)
  		if (!client)
  			continue;
  
 -		SendBlockNoLock(block_to_send.peer_id, block, client->serialization_version,
 -				client->net_proto_version);
-+		m_threadpool->enqueue(
-+			[this, block_to_send, block, client](){
-+			SendBlockNoLock(
-+				block_to_send.peer_id,
-+				block,
-+				client->serialization_version,
-+				client->net_proto_version
-+			);
-+		});
++		SendBlockNoLock(
++			block_to_send.peer_id,
++			block,
++			client->serialization_version,
++			client->net_proto_version
++		);
  
  		client->SentBlock(block_to_send.pos);
  		total_sending++;
 +		m_sent_blocks->increment(1);
  	}
-+
-+	while (!m_threadpool->empty()){
-+		sleep_ms(1);
-+	}
 +
 +	u64 end_time = porting::getTimeUs();
 +	m_sendblocks_time->increment(end_time - start_time);
