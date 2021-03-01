@@ -45,31 +45,69 @@ index f47deda33..b0628cb5f 100644
  
  class MapDatabasePostgreSQL : private Database_PostgreSQL, public MapDatabase
 diff --git a/src/map.cpp b/src/map.cpp
-index 7c59edbaa..67d4631a3 100644
+index 7c59edbaa..2028b9ea1 100644
 --- a/src/map.cpp
 +++ b/src/map.cpp
-@@ -1189,6 +1189,8 @@ ServerMap::ServerMap(const std::string &savedir, IGameDef *gamedef,
+@@ -1189,6 +1189,9 @@ ServerMap::ServerMap(const std::string &savedir, IGameDef *gamedef,
  {
  	verbosestream<<FUNCTION_NAME<<std::endl;
  
 +	m_threadpool = new ThreadPool(4);
++	m_threadpool_staging = new ThreadPool(4);
 +
  	// Tell the EmergeManager about our MapSettingsManager
  	emerge->map_settings_mgr = &settings_mgr;
  
-@@ -1280,6 +1282,11 @@ ServerMap::~ServerMap()
+@@ -1217,6 +1220,7 @@ ServerMap::ServerMap(const std::string &savedir, IGameDef *gamedef,
+ 	m_map_saving_enabled = false;
+ 
+ 	m_save_time_counter = mb->addCounter("minetest_core_map_save_time", "Map save time (in nanoseconds)");
++	m_save_blocks_counter = mb->addCounter("minetest_core_map_save_count", "Map save block count");
+ 
+ 	m_map_compression_level = rangelim(g_settings->getS16("map_compression_level_disk"), -1, 9);
+ 
+@@ -1280,6 +1284,9 @@ ServerMap::~ServerMap()
  				<<", exception: "<<e.what()<<std::endl;
  	}
  
-+	while (!m_threadpool->empty()){
-+		sleep_ms(1);
-+	}
++	delete m_threadpool_staging;
 +	delete m_threadpool;
 +
  	/*
  		Close database if it was opened
  	*/
-@@ -1726,16 +1733,41 @@ bool ServerMap::saveBlock(MapBlock *block, MapDatabase *db, int compression_leve
+@@ -1616,12 +1623,21 @@ void ServerMap::save(ModifiedState save_level)
+ 
+ 				modprofiler.add(block->getModifiedReasonString(), 1);
+ 
+-				saveBlock(block);
+ 				block_count++;
++				m_threadpool_staging->enqueue(
++					[this, block](){
++						saveBlock(block);
++				});
+ 			}
+ 		}
+ 	}
+ 
++	// wait until all blocks are staged (serialized and queued into the actual sending pool)
++	while (!m_threadpool_staging->empty()){
++		// TODO: this isn't nice but works for now
++		sleep_ms(1);
++	}
++
+ 	if(save_started)
+ 		endSave();
+ 
+@@ -1641,6 +1657,7 @@ void ServerMap::save(ModifiedState save_level)
+ 
+ 	auto end_time = porting::getTimeNs();
+ 	m_save_time_counter->increment(end_time - start_time);
++	m_save_blocks_counter->increment(block_count);
+ }
+ 
+ void ServerMap::listAllLoadableBlocks(std::vector<v3s16> &dst)
+@@ -1726,16 +1743,41 @@ bool ServerMap::saveBlock(MapBlock *block, MapDatabase *db, int compression_leve
  		[0] u8 serialization version
  		[1] data
  	*/
@@ -118,7 +156,7 @@ index 7c59edbaa..67d4631a3 100644
  
  void ServerMap::loadBlock(std::string *blob, v3s16 p3d, MapSector *sector, bool save_after_load)
 diff --git a/src/map.h b/src/map.h
-index e68795c4a..0c909589a 100644
+index e68795c4a..b96b3824f 100644
 --- a/src/map.h
 +++ b/src/map.h
 @@ -24,6 +24,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
@@ -146,15 +184,24 @@ index e68795c4a..0c909589a 100644
  	MapBlock* loadBlock(v3s16 p);
  	// Database version
  	void loadBlock(std::string *blob, v3s16 p3d, MapSector *sector, bool save_after_load=false);
-@@ -412,6 +414,8 @@ class ServerMap : public Map
+@@ -412,6 +414,9 @@ class ServerMap : public Map
  private:
  	// Emerge manager
  	EmergeManager *m_emerge;
++	ThreadPool *m_threadpool_staging = nullptr;
 +	ThreadPool *m_threadpool = nullptr;
 +	std::mutex m_saveblock_mutex;
  
  	std::string m_savedir;
  	bool m_map_saving_enabled;
+@@ -429,6 +434,7 @@ class ServerMap : public Map
+ 	MapDatabase *dbase_ro = nullptr;
+ 
+ 	MetricCounterPtr m_save_time_counter;
++	MetricCounterPtr m_save_blocks_counter;
+ };
+ 
+ 
 diff --git a/src/mapblock.cpp b/src/mapblock.cpp
 index 0ca71e643..6e7d36df6 100644
 --- a/src/mapblock.cpp
@@ -222,19 +269,10 @@ index 65db02300..28c5b1406 100644
  
  	/*
 diff --git a/src/server.cpp b/src/server.cpp
-index d37d847a9..0ce0b0072 100644
+index d37d847a9..cc3c4010b 100644
 --- a/src/server.cpp
 +++ b/src/server.cpp
-@@ -250,6 +250,8 @@ Server::Server(
- 	if (!gamespec.isValid())
- 		throw ServerError("Supplied invalid gamespec");
- 
-+	m_threadpool = new ThreadPool(4);
-+
- #if USE_PROMETHEUS
- 	m_metrics_backend = std::unique_ptr<MetricsBackend>(createPrometheusMetricsBackend());
- #else
-@@ -279,7 +281,39 @@ Server::Server(
+@@ -279,7 +279,40 @@ Server::Server(
  			"minetest_core_server_packet_recv_processed",
  			"Valid received packets processed");
  
@@ -271,14 +309,16 @@ index d37d847a9..0ce0b0072 100644
  	m_lag_gauge->set(g_settings->getFloat("dedicated_server_step"));
 +
 +	m_threadpool = new ThreadPool(4);
++	m_threadpool_staging = new ThreadPool(4);
  }
  
  Server::~Server()
-@@ -347,6 +381,8 @@ Server::~Server()
+@@ -347,6 +380,9 @@ Server::~Server()
  		delete m_thread;
  	}
  
 +	delete m_threadpool;
++	delete m_threadpool_staging;
 +
  	// Delete things in the reverse order of creation
  	delete m_emerge;
@@ -408,22 +448,31 @@ index d37d847a9..0ce0b0072 100644
  	MutexAutoLock envlock(m_env_mutex);
  	//TODO check if one big lock could be faster then multiple small ones
  
-@@ -2410,12 +2497,21 @@ void Server::SendBlocks(float dtime)
+@@ -2410,12 +2497,30 @@ void Server::SendBlocks(float dtime)
  		if (!client)
  			continue;
  
 -		SendBlockNoLock(block_to_send.peer_id, block, client->serialization_version,
 -				client->net_proto_version);
-+		SendBlockNoLock(
-+			block_to_send.peer_id,
-+			block,
-+			client->serialization_version,
-+			client->net_proto_version
-+		);
++		m_threadpool_staging->enqueue(
++			[this, block_to_send, block, client](){
++			SendBlockNoLock(
++				block_to_send.peer_id,
++				block,
++				client->serialization_version,
++				client->net_proto_version
++			);
++		});
  
  		client->SentBlock(block_to_send.pos);
  		total_sending++;
 +		m_sent_blocks->increment(1);
++	}
++
++	// wait until all blocks are staged (serialized and queued into the actual sending pool)
++	while (!m_threadpool_staging->empty()){
++		// TODO: this isn't nice but works for now
++		sleep_ms(1);
  	}
 +
 +	u64 end_time = porting::getTimeUs();
@@ -433,7 +482,7 @@ index d37d847a9..0ce0b0072 100644
  }
  
 diff --git a/src/server.h b/src/server.h
-index 9857215d0..833e8bf91 100644
+index 9857215d0..3712f6905 100644
 --- a/src/server.h
 +++ b/src/server.h
 @@ -43,6 +43,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
@@ -444,17 +493,18 @@ index 9857215d0..833e8bf91 100644
  
  class ChatEvent;
  struct ChatEventChat;
-@@ -581,6 +582,9 @@ class Server : public con::PeerHandler, public MapEventReceiver,
+@@ -581,6 +582,10 @@ class Server : public con::PeerHandler, public MapEventReceiver,
  
  	std::unordered_map<std::string, Translations> server_translations;
  
 +	// Worker thread pool
++	ThreadPool *m_threadpool_staging = nullptr;
 +	ThreadPool *m_threadpool = nullptr;
 +
  	/*
  		Threads
  	*/
-@@ -682,6 +686,13 @@ class Server : public con::PeerHandler, public MapEventReceiver,
+@@ -682,6 +687,13 @@ class Server : public con::PeerHandler, public MapEventReceiver,
  	MetricCounterPtr m_aom_buffer_counter;
  	MetricCounterPtr m_packet_recv_counter;
  	MetricCounterPtr m_packet_recv_processed_counter;
