@@ -1,0 +1,87 @@
+diff --git a/src/server.cpp b/src/server.cpp
+index 81cdd1f8d..17258b47f 100644
+--- a/src/server.cpp
++++ b/src/server.cpp
+@@ -2328,16 +2328,34 @@ void Server::sendMetadataChanged(const std::list<v3s16> &meta_updates, float far
+ }
+ 
+ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
+-		u16 net_proto_version)
++		u16 net_proto_version, std::map<std::string, std::string> *cache)
+ {
+-	/*
+-		Create a packet with the block in the right format
+-	*/
+-	thread_local const int net_compression_level = rangelim(g_settings->getS16("map_compression_level_net"), -1, 9);
+-	std::ostringstream os(std::ios_base::binary);
+-	block->serialize(os, ver, false, net_compression_level);
+-	block->serializeNetworkSpecific(os);
+-	std::string s = os.str();
++	// create the cache key
++	std::string cache_key = std::to_string(block->getPos().X) + "/" +
++	std::to_string(block->getPos().Y) + "/" +
++	std::to_string(block->getPos().Z) + "/" +
++	std::to_string(ver);
++
++	std::string s;
++
++	if (cache != NULL && cache->find(cache_key) != cache->end()){
++		// cached serialized mapblock
++		s = (*cache)[cache_key];
++	} else {
++		/*
++			Create a packet with the block in the right format
++		*/
++		thread_local const int net_compression_level = rangelim(g_settings->getS16("map_compression_level_net"), -1, 9);
++		std::ostringstream os(std::ios_base::binary);
++		block->serialize(os, ver, false, net_compression_level);
++		block->serializeNetworkSpecific(os);
++		s = os.str();
++
++		if (cache != NULL){
++			// cache for later
++			(*cache)[cache_key] = s;
++		}
++	}
+ 
+ 	NetworkPacket pkt(TOCLIENT_BLOCKDATA, 2 + 2 + 2 + s.size(), peer_id);
+ 
+@@ -2387,6 +2405,7 @@ void Server::SendBlocks(float dtime)
+ 
+ 	ScopeProfiler sp(g_profiler, "Server::SendBlocks(): Send to clients");
+ 	Map &map = m_env->getMap();
++	std::map<std::string, std::string> cache;
+ 
+ 	for (const PrioritySortedBlockTransfer &block_to_send : queue) {
+ 		if (total_sending >= max_blocks_to_send)
+@@ -2402,7 +2421,7 @@ void Server::SendBlocks(float dtime)
+ 			continue;
+ 
+ 		SendBlockNoLock(block_to_send.peer_id, block, client->serialization_version,
+-				client->net_proto_version);
++				client->net_proto_version, &cache);
+ 
+ 		client->SentBlock(block_to_send.pos);
+ 		total_sending++;
+@@ -2423,7 +2442,7 @@ bool Server::SendBlock(session_t peer_id, const v3s16 &blockpos)
+ 		return false;
+ 	}
+ 	SendBlockNoLock(peer_id, block, client->serialization_version,
+-			client->net_proto_version);
++			client->net_proto_version, NULL);
+ 	m_clients.unlock();
+ 
+ 	return true;
+diff --git a/src/server.h b/src/server.h
+index 9857215d0..1a9d034e5 100644
+--- a/src/server.h
++++ b/src/server.h
+@@ -455,7 +455,7 @@ class Server : public con::PeerHandler, public MapEventReceiver,
+ 			float far_d_nodes = 100);
+ 
+ 	// Environment and Connection must be locked when called
+-	void SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver, u16 net_proto_version);
++	void SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver, u16 net_proto_version, std::map<std::string, std::string> *cache = NULL);
+ 
+ 	// Sends blocks to clients (locks env and con on its own)
+ 	void SendBlocks(float dtime);
