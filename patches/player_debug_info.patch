@@ -1,0 +1,20 @@
+diff --git a/src/script/lua_api/l_server.cpp b/src/script/lua_api/l_server.cpp
+index bf5292521..21a175b15 100644
+--- a/src/script/lua_api/l_server.cpp
++++ b/src/script/lua_api/l_server.cpp
+@@ -230,7 +230,6 @@ int ModApiServer::l_get_player_information(lua_State *L)
+ 	lua_pushstring(L, info.lang_code.c_str());
+ 	lua_settable(L, table);
+ 
+-#ifndef NDEBUG
+ 	lua_pushstring(L,"serialization_version");
+ 	lua_pushnumber(L, info.ser_vers);
+ 	lua_settable(L, table);
+@@ -254,7 +253,6 @@ int ModApiServer::l_get_player_information(lua_State *L)
+ 	lua_pushstring(L,"state");
+ 	lua_pushstring(L, ClientInterface::state2Name(info.state).c_str());
+ 	lua_settable(L, table);
+-#endif
+ 
+ 	return 1;
+ }

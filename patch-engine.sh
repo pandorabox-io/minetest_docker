@@ -18,3 +18,6 @@ cat patches/minetest_metrics_and_mapsending.patch | patch -p1
 
 echo "async pg map and player save"
 cat patches/minetest_async_pg.patch | patch -p1
+
+echo "get_player_info() with debug info"
+cat patches/player_debug_info.patch | patch -p1
