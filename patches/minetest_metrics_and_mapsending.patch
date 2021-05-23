@@ -1,3 +1,35 @@
+diff --git a/src/map.cpp b/src/map.cpp
+index 7c59edbaa..2f02d2177 100644
+--- a/src/map.cpp
++++ b/src/map.cpp
+@@ -1217,6 +1217,7 @@ ServerMap::ServerMap(const std::string &savedir, IGameDef *gamedef,
+ 	m_map_saving_enabled = false;
+ 
+ 	m_save_time_counter = mb->addCounter("minetest_core_map_save_time", "Map save time (in nanoseconds)");
++	m_save_count_counter = mb->addCounter("minetest_core_map_save_count", "Map save count (in mapblocks)");
+ 
+ 	m_map_compression_level = rangelim(g_settings->getS16("map_compression_level_disk"), -1, 9);
+ 
+@@ -1641,6 +1642,7 @@ void ServerMap::save(ModifiedState save_level)
+ 
+ 	auto end_time = porting::getTimeNs();
+ 	m_save_time_counter->increment(end_time - start_time);
++	m_save_count_counter->increment(block_count);
+ }
+ 
+ void ServerMap::listAllLoadableBlocks(std::vector<v3s16> &dst)
+diff --git a/src/map.h b/src/map.h
+index e68795c4a..cef9ba944 100644
+--- a/src/map.h
++++ b/src/map.h
+@@ -429,6 +429,7 @@ class ServerMap : public Map
+ 	MapDatabase *dbase_ro = nullptr;
+ 
+ 	MetricCounterPtr m_save_time_counter;
++	MetricCounterPtr m_save_count_counter;
+ };
+ 
+ 
 diff --git a/src/server.cpp b/src/server.cpp
 index 81cdd1f8d..3d0553cce 100644
 --- a/src/server.cpp
