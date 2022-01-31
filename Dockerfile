@@ -1,11 +1,14 @@
 # Stage 1 build
 FROM alpine:3.15.0
 
-ENV GAME_BRANCH=5.4.1
+ENV GAME_BRANCH=5.5.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=5.4.1
+ENV ENGINE_BRANCH=5.5.0
 ENV ENGINE_REPO=https://github.com/minetest/minetest
+
+ENV IRRLICHT_BRANCH=1.9.0mt4
+ENV IRRLICHT_REPO=https://github.com/minetest/irrlicht
 
 # RelWithDebInfo
 # Release
@@ -15,7 +18,7 @@ ENV ENGINE_BUILD_TYPE=Release
 
 RUN apk add --no-cache build-base irrlicht-dev cmake bzip2-dev libpng-dev jpeg-dev \
   sqlite-dev curl-dev zlib-dev gmp-dev jsoncpp-dev luajit-dev \
-  git postgresql-dev
+  git postgresql-dev zstd-dev
 
 RUN mkdir /git
 
@@ -34,6 +37,10 @@ RUN cd /git && git clone --depth 1 https://github.com/jupp0r/prometheus-cpp.git 
 RUN cd /git && git clone --depth 1 https://github.com/libspatialindex/libspatialindex -b 1.9.3 && \
   cd libspatialindex && \
   cmake . && make -j4 && make install
+
+# irrlicht
+RUN cd /git && git clone --depth=1 ${IRRLICHT_REPO} irrlicht -b ${IRRLICHT_BRANCH} && \
+	cp -r irrlicht/include /usr/include/irrlichtmt
 
 # download minetest engine
 RUN cd /git && git clone ${ENGINE_REPO} minetest && \
@@ -72,7 +79,7 @@ FROM alpine:3.15.0
 
 RUN apk add --no-cache bzip2 \
   sqlite-libs curl zlib gmp jsoncpp luajit \
-  postgresql-libs
+  postgresql-libs zstd-libs
 
 WORKDIR /data
 
