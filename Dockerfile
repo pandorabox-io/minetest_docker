@@ -1,5 +1,5 @@
 # Stage 1 build
-FROM alpine:3.15.0
+FROM alpine:3.15.2
 
 ENV GAME_BRANCH=5.5.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
@@ -75,7 +75,7 @@ RUN cd /git/minetest && cmake . \
  make install
 
 # Stage 2 package
-FROM alpine:3.15.0
+FROM alpine:3.15.2
 
 RUN apk add --no-cache bzip2 \
   sqlite-libs curl zlib gmp jsoncpp luajit \
