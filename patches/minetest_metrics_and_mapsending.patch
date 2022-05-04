@@ -1,5 +1,5 @@
 diff --git a/src/map.cpp b/src/map.cpp
-index a11bbb9..60698a7 100644
+index a11bbb96a..60698a7e8 100644
 --- a/src/map.cpp
 +++ b/src/map.cpp
 @@ -1210,6 +1210,7 @@ ServerMap::ServerMap(const std::string &savedir, IGameDef *gamedef,
@@ -19,7 +19,7 @@ index a11bbb9..60698a7 100644
  
  void ServerMap::listAllLoadableBlocks(std::vector<v3s16> &dst)
 diff --git a/src/map.h b/src/map.h
-index fe580b2..a3de6b7 100644
+index fe580b20f..a3de6b7f9 100644
 --- a/src/map.h
 +++ b/src/map.h
 @@ -428,6 +428,7 @@ class ServerMap : public Map
@@ -31,10 +31,10 @@ index fe580b2..a3de6b7 100644
  
  
 diff --git a/src/server.cpp b/src/server.cpp
-index 23a7dc5..6baec1f 100644
+index 23a7dc5a0..7e84caff7 100644
 --- a/src/server.cpp
 +++ b/src/server.cpp
-@@ -280,7 +280,39 @@ Server::Server(
+@@ -280,7 +280,44 @@ Server::Server(
  			"minetest_core_server_packet_recv_processed",
  			"Valid received packets processed");
  
@@ -68,13 +68,18 @@ index 23a7dc5..6baec1f 100644
 +			"map save time"
 +	);
 +
++	m_map_edit_events = m_metrics_backend->addCounter(
++			"minetest_core_map_edit_events",
++			"map-edit events count"
++	);
++
  	m_lag_gauge->set(g_settings->getFloat("dedicated_server_step"));
 +
 +	m_threadpool = new ThreadPool(8);
  }
  
  Server::~Server()
-@@ -461,7 +493,7 @@ void Server::init()
+@@ -461,7 +498,7 @@ void Server::init()
  
  	// Initialize Environment
  	m_startup_server_map = nullptr; // Ownership moved to ServerEnvironment
@@ -83,7 +88,7 @@ index 23a7dc5..6baec1f 100644
  
  	m_inventory_mgr->setEnv(m_env);
  	m_clients.setEnv(m_env);
-@@ -620,18 +652,28 @@ void Server::AsyncRunStep(bool initial_step)
+@@ -620,18 +657,28 @@ void Server::AsyncRunStep(bool initial_step)
  		}
  		m_env->reportMaxLagEstimate(max_lag);
  		// Step environment
@@ -112,7 +117,7 @@ index 23a7dc5..6baec1f 100644
  	}
  
  	/*
-@@ -855,6 +897,8 @@ void Server::AsyncRunStep(bool initial_step)
+@@ -855,6 +902,8 @@ void Server::AsyncRunStep(bool initial_step)
  		Send queued-for-sending map edit events.
  	*/
  	{
@@ -121,7 +126,7 @@ index 23a7dc5..6baec1f 100644
  		// We will be accessing the environment
  		MutexAutoLock lock(m_env_mutex);
  
-@@ -955,6 +999,9 @@ void Server::AsyncRunStep(bool initial_step)
+@@ -955,6 +1004,9 @@ void Server::AsyncRunStep(bool initial_step)
  		// Send all metadata updates
  		if (node_meta_updates.size())
  			sendMetadataChanged(node_meta_updates);
@@ -131,7 +136,7 @@ index 23a7dc5..6baec1f 100644
  	}
  
  	/*
-@@ -973,6 +1020,8 @@ void Server::AsyncRunStep(bool initial_step)
+@@ -973,6 +1025,8 @@ void Server::AsyncRunStep(bool initial_step)
  
  	// Save map, players and auth stuff
  	{
@@ -140,7 +145,7 @@ index 23a7dc5..6baec1f 100644
  		float &counter = m_savemap_timer;
  		counter += dtime;
  		static thread_local const float save_interval =
-@@ -997,6 +1046,9 @@ void Server::AsyncRunStep(bool initial_step)
+@@ -997,6 +1051,9 @@ void Server::AsyncRunStep(bool initial_step)
  			// Save environment metadata
  			m_env->saveMeta();
  		}
@@ -150,7 +155,15 @@ index 23a7dc5..6baec1f 100644
  	}
  
  	m_shutdown_state.tick(dtime, this);
-@@ -2356,6 +2408,7 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
+@@ -1224,6 +1281,7 @@ void Server::setTimeOfDay(u32 time)
+ 
+ void Server::onMapEditEvent(const MapEditEvent &event)
+ {
++	m_map_edit_events->increment(1);
+ 	if (m_ignore_map_edit_events_area.contains(event.getArea()))
+ 		return;
+ 
+@@ -2356,6 +2414,7 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
  
  void Server::SendBlocks(float dtime)
  {
@@ -158,7 +171,7 @@ index 23a7dc5..6baec1f 100644
  	MutexAutoLock envlock(m_env_mutex);
  	//TODO check if one big lock could be faster then multiple small ones
  
-@@ -2409,12 +2462,28 @@ void Server::SendBlocks(float dtime)
+@@ -2409,12 +2468,28 @@ void Server::SendBlocks(float dtime)
  		if (!client)
  			continue;
  
@@ -190,7 +203,7 @@ index 23a7dc5..6baec1f 100644
  }
  
 diff --git a/src/server.h b/src/server.h
-index 2741b31..9ab0edc 100644
+index 2741b3157..74781ab60 100644
 --- a/src/server.h
 +++ b/src/server.h
 @@ -44,6 +44,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
@@ -211,7 +224,7 @@ index 2741b31..9ab0edc 100644
  	/*
  		Threads
  	*/
-@@ -711,6 +715,13 @@ class Server : public con::PeerHandler, public MapEventReceiver,
+@@ -711,6 +715,14 @@ class Server : public con::PeerHandler, public MapEventReceiver,
  	MetricCounterPtr m_aom_buffer_counter;
  	MetricCounterPtr m_packet_recv_counter;
  	MetricCounterPtr m_packet_recv_processed_counter;
@@ -222,11 +235,12 @@ index 2741b31..9ab0edc 100644
 +	MetricCounterPtr m_map_timer_unload_time;
 +	MetricCounterPtr m_mapedit_time;
 +	MetricCounterPtr m_mapsave_time;
++	MetricCounterPtr m_map_edit_events;
  };
  
  /*
 diff --git a/src/serverenvironment.cpp b/src/serverenvironment.cpp
-index f371165..1d01ce7 100644
+index f3711652c..1d01ce712 100644
 --- a/src/serverenvironment.cpp
 +++ b/src/serverenvironment.cpp
 @@ -393,13 +393,14 @@ static std::random_device seed;
@@ -351,7 +365,7 @@ index f371165..1d01ce7 100644
  	/*
  		Step active objects
 diff --git a/src/serverenvironment.h b/src/serverenvironment.h
-index 8733c2d..80d000c 100644
+index 8733c2dd2..80d000c61 100644
 --- a/src/serverenvironment.h
 +++ b/src/serverenvironment.h
 @@ -24,7 +24,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
@@ -387,7 +401,7 @@ index 8733c2d..80d000c 100644
  };
 diff --git a/src/util/ThreadPool.h b/src/util/ThreadPool.h
 new file mode 100644
-index 0000000..bedb00c
+index 000000000..bedb00cc3
 --- /dev/null
 +++ b/src/util/ThreadPool.h
 @@ -0,0 +1,103 @@
