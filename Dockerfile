@@ -13,7 +13,7 @@ ENV IRRLICHT_REPO=https://github.com/minetest/irrlicht
 # RelWithDebInfo
 # Release
 # Debug
-ENV ENGINE_BUILD_TYPE=Release
+ENV ENGINE_BUILD_TYPE=RelWithDebInfo
 
 
 RUN apk add --no-cache build-base irrlicht-dev cmake bzip2-dev libpng-dev jpeg-dev \
