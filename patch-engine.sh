@@ -3,11 +3,6 @@
 # exit on error
 set -e
 
-#echo "Patch: sqlite3 patch, issue: https://github.com/pandorabox-io/pandorabox.io/issues/456"
-#echo "inserts or updates auth data"
-#cat patches/minetest_auth_sqlite_race.patch | patch -p1
-#cat patches/minetest_auth_postgres_race.patch | patch -p1
-
 echo "Patch: Disable some timestamp shenanigans"
 cat patches/disable_timestamps.patch | patch -p1
 

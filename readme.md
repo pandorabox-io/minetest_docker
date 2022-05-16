@@ -10,8 +10,9 @@ Customized and patched minetest engine in a container
 
 * Postgresql support
 * Prometheus metrics support
-* Async mapsending and saving
 * Various fixes / perf. improvements
+
+**use at your own risk**
 
 <img src="pics/yoda.jpg"/>
 
