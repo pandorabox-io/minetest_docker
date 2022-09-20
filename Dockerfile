@@ -1,13 +1,13 @@
 # Stage 1 build
 FROM alpine:3.15.4
 
-ENV GAME_BRANCH=5.6.0
+ENV GAME_BRANCH=5.6.1
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=5.6.0
+ENV ENGINE_BRANCH=5.6.1
 ENV ENGINE_REPO=https://github.com/minetest/minetest
 
-ENV IRRLICHT_BRANCH=1.9.0mt7
+ENV IRRLICHT_BRANCH=1.9.0mt8
 ENV IRRLICHT_REPO=https://github.com/minetest/irrlicht
 
 # RelWithDebInfo
