@@ -1,0 +1,85 @@
+diff --git a/src/database/database-postgresql.cpp b/src/database/database-postgresql.cpp
+index 9d6501e68..9964bc77a 100644
+--- a/src/database/database-postgresql.cpp
++++ b/src/database/database-postgresql.cpp
+@@ -236,7 +236,7 @@ bool MapDatabasePostgreSQL::saveBlock(const v3s16 &pos, const std::string &data)
+ 		return false;
+ 	}
+ 
+-	verifyDatabase();
++	//verifyDatabase();
+ 
+ 	s32 x, y, z;
+ 	x = htonl(pos.X);
+@@ -260,7 +260,7 @@ bool MapDatabasePostgreSQL::saveBlock(const v3s16 &pos, const std::string &data)
+ 
+ void MapDatabasePostgreSQL::loadBlock(const v3s16 &pos, std::string *block)
+ {
+-	verifyDatabase();
++	//verifyDatabase();
+ 
+ 	s32 x, y, z;
+ 	x = htonl(pos.X);
+@@ -444,7 +444,7 @@ void PlayerDatabasePostgreSQL::initStatements()
+ 
+ bool PlayerDatabasePostgreSQL::playerDataExists(const std::string &playername)
+ {
+-	verifyDatabase();
++	//verifyDatabase();
+ 
+ 	const char *values[] = { playername.c_str() };
+ 	PGresult *results = execPrepared("load_player", 1, values, false);
+@@ -460,7 +460,7 @@ void PlayerDatabasePostgreSQL::savePlayer(RemotePlayer *player)
+ 	if (!sao)
+ 		return;
+ 
+-	verifyDatabase();
++	//verifyDatabase();
+ 
+ 	v3f pos = sao->getBasePosition();
+ 	std::string pitch = ftos(sao->getLookPitch());
+@@ -546,7 +546,7 @@ void PlayerDatabasePostgreSQL::savePlayer(RemotePlayer *player)
+ bool PlayerDatabasePostgreSQL::loadPlayer(RemotePlayer *player, PlayerSAO *sao)
+ {
+ 	sanity_check(sao);
+-	verifyDatabase();
++	//verifyDatabase();
+ 
+ 	const char *values[] = { player->getName() };
+ 	PGresult *results = execPrepared("load_player", 1, values, false, false);
+@@ -685,7 +685,7 @@ void AuthDatabasePostgreSQL::initStatements()
+ 
+ bool AuthDatabasePostgreSQL::getAuth(const std::string &name, AuthEntry &res)
+ {
+-	verifyDatabase();
++	//verifyDatabase();
+ 
+ 	const char *values[] = { name.c_str() };
+ 	PGresult *result = execPrepared("auth_read", 1, values, false, false);
+@@ -717,7 +717,7 @@ bool AuthDatabasePostgreSQL::getAuth(const std::string &name, AuthEntry &res)
+ 
+ bool AuthDatabasePostgreSQL::saveAuth(const AuthEntry &authEntry)
+ {
+-	verifyDatabase();
++	//verifyDatabase();
+ 
+ 	beginSave();
+ 
+@@ -739,7 +739,7 @@ bool AuthDatabasePostgreSQL::saveAuth(const AuthEntry &authEntry)
+ 
+ bool AuthDatabasePostgreSQL::createAuth(AuthEntry &authEntry)
+ {
+-	verifyDatabase();
++	//verifyDatabase();
+ 
+ 	std::string lastLoginStr = itos(authEntry.last_login);
+ 	const char *values[] = {
+@@ -782,7 +782,7 @@ bool AuthDatabasePostgreSQL::deleteAuth(const std::string &name)
+ 
+ void AuthDatabasePostgreSQL::listNames(std::vector<std::string> &res)
+ {
+-	verifyDatabase();
++	//verifyDatabase();
+ 
+ 	PGresult *results = execPrepared("auth_list_names", 0,
+ 		NULL, NULL, NULL, false, false);
