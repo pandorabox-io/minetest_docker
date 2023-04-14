@@ -6,7 +6,7 @@ set -e
 echo "Patch: Disable some timestamp shenanigans"
 cat patches/disable_timestamps.patch | patch -p1
 
-echo "Patch: Deferrend mapsending patch"
+echo "Patch: Deferred mapsending patch"
 cat patches/minetest_deferred_send.patch | patch -p1
 
 #echo "Patch: Metrics and async mapsending"

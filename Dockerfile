@@ -1,13 +1,13 @@
 # Stage 1 build
-FROM alpine:3.15.4
+FROM alpine:3.17.3
 
-ENV GAME_BRANCH=5.6.1
+ENV GAME_BRANCH=5.7.0
 ENV GAME_REPO=https://github.com/minetest/minetest_game.git
 
-ENV ENGINE_BRANCH=5.6.1
+ENV ENGINE_BRANCH=5.7.0
 ENV ENGINE_REPO=https://github.com/minetest/minetest
 
-ENV IRRLICHT_BRANCH=1.9.0mt8
+ENV IRRLICHT_BRANCH=1.9.0mt10
 ENV IRRLICHT_REPO=https://github.com/minetest/irrlicht
 
 # RelWithDebInfo
@@ -15,19 +15,18 @@ ENV IRRLICHT_REPO=https://github.com/minetest/irrlicht
 # Debug
 ENV ENGINE_BUILD_TYPE=RelWithDebInfo
 
-
 RUN apk add --no-cache build-base irrlicht-dev cmake bzip2-dev libpng-dev jpeg-dev \
-  sqlite-dev curl-dev zlib-dev gmp-dev jsoncpp-dev luajit-dev \
-  git postgresql-dev zstd-dev
+	sqlite-dev curl-dev zlib-dev gmp-dev jsoncpp-dev luajit-dev \
+	git postgresql-dev zstd-dev
 
 RUN mkdir /git
 
 # git setup
 RUN git config --global user.email "you@example.com" && \
- git config --global user.name "somename"
+	git config --global user.name "somename"
 
 # prometheus cpp
-RUN cd /git && git clone --depth 1 https://github.com/jupp0r/prometheus-cpp.git -b v0.9.0 && \
+RUN cd /git && git clone --depth 1 https://github.com/jupp0r/prometheus-cpp.git -b v1.1.0 && \
   cd prometheus-cpp && \
   git submodule init && \
   git submodule update && \
@@ -35,8 +34,8 @@ RUN cd /git && git clone --depth 1 https://github.com/jupp0r/prometheus-cpp.git 
 
 # spatialindex
 RUN cd /git && git clone --depth 1 https://github.com/libspatialindex/libspatialindex -b 1.9.3 && \
-  cd libspatialindex && \
-  cmake . && make -j4 && make install
+	cd libspatialindex && \
+	cmake . && make -j4 && make install
 
 # irrlicht
 RUN cd /git && git clone --depth=1 ${IRRLICHT_REPO} irrlicht -b ${IRRLICHT_BRANCH} && \
@@ -49,7 +48,7 @@ RUN cd /git && git clone ${ENGINE_REPO} minetest && \
 
 # minetest game
 RUN cd /git/minetest/ && rm -rf games/minetest_game && \
- git clone --depth 1 ${GAME_REPO} games/minetest_game -b ${GAME_BRANCH}
+	git clone --depth 1 ${GAME_REPO} games/minetest_game -b ${GAME_BRANCH}
 
 # apply patches
 COPY patches/* /git/minetest/patches/
@@ -69,17 +68,17 @@ RUN cd /git/minetest && cmake . \
 	-DENABLE_POSTGRESQL=TRUE\
 	-DENABLE_SYSTEM_GMP=TRUE \
 	-DENABLE_SYSTEM_JSONCPP=TRUE \
-  -DENABLE_PROMETHEUS=TRUE \
+	-DENABLE_PROMETHEUS=TRUE \
 	-DVERSION_EXTRA=docker &&\
- make -j4 &&\
- make install
+	make -j4 &&\
+	make install
 
 # Stage 2 package
-FROM alpine:3.15.4
+FROM alpine:3.17.3
 
 RUN apk add --no-cache bzip2 \
-  sqlite-libs curl zlib gmp jsoncpp luajit \
-  postgresql-libs zstd-libs
+	sqlite-libs curl zlib gmp jsoncpp luajit \
+	postgresql-libs zstd-libs
 
 WORKDIR /data
 
