@@ -1,13 +1,10 @@
 # Stage 1 build
-FROM alpine:3.17.3
+FROM alpine:3.18.5
 
-ENV GAME_BRANCH=5.7.0
-ENV GAME_REPO=https://github.com/minetest/minetest_game.git
-
-ENV ENGINE_BRANCH=5.7.0
+ENV ENGINE_BRANCH=5.8.0
 ENV ENGINE_REPO=https://github.com/minetest/minetest
 
-ENV IRRLICHT_BRANCH=1.9.0mt10
+ENV IRRLICHT_BRANCH=1.9.0mt13
 ENV IRRLICHT_REPO=https://github.com/minetest/irrlicht
 
 # RelWithDebInfo
@@ -45,10 +42,6 @@ RUN cd /git && git clone --depth=1 ${IRRLICHT_REPO} irrlicht -b ${IRRLICHT_BRANC
 RUN cd /git && git clone ${ENGINE_REPO} minetest && \
 	cd minetest && \
 	git checkout ${ENGINE_BRANCH}
-
-# minetest game
-RUN cd /git/minetest/ && rm -rf games/minetest_game && \
-	git clone --depth 1 ${GAME_REPO} games/minetest_game -b ${GAME_BRANCH}
 
 # apply patches
 COPY patches/* /git/minetest/patches/
