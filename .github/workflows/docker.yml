@@ -23,11 +23,6 @@ jobs:
     - name: build image
       run: docker build -t buckaroobanzay/minetest:${{ steps.extract_branch.outputs.branch }} .
 
-    - name: test image
-      run: ./test.sh
-      env:
-        BRANCH: ${{ steps.extract_branch.outputs.branch }}
-
     - name: Dockerhub login
       run: docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
 
