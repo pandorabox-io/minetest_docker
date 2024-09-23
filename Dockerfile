@@ -1,11 +1,8 @@
 # Stage 1 build
-FROM alpine:3.18.5
+FROM alpine:3.20.3
 
-ENV ENGINE_BRANCH=5.8.0
+ENV ENGINE_BRANCH=5.9.1
 ENV ENGINE_REPO=https://github.com/minetest/minetest
-
-ENV IRRLICHT_BRANCH=1.9.0mt13
-ENV IRRLICHT_REPO=https://github.com/minetest/irrlicht
 
 # RelWithDebInfo
 # Release
@@ -33,10 +30,6 @@ RUN cd /git && git clone --depth 1 https://github.com/jupp0r/prometheus-cpp.git 
 RUN cd /git && git clone --depth 1 https://github.com/libspatialindex/libspatialindex -b 1.9.3 && \
 	cd libspatialindex && \
 	cmake . && make -j4 && make install
-
-# irrlicht
-RUN cd /git && git clone --depth=1 ${IRRLICHT_REPO} irrlicht -b ${IRRLICHT_BRANCH} && \
-	cp -r irrlicht/include /usr/include/irrlichtmt
 
 # download minetest engine
 RUN cd /git && git clone ${ENGINE_REPO} minetest && \
@@ -67,7 +60,7 @@ RUN cd /git/minetest && cmake . \
 	make install
 
 # Stage 2 package
-FROM alpine:3.17.3
+FROM alpine:3.20.3
 
 RUN apk add --no-cache bzip2 \
 	sqlite-libs curl zlib gmp jsoncpp luajit \
