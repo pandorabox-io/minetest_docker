@@ -1,9 +1,8 @@
 #!/bin/sh
 
 mkdir -p /crashlogs
-ulimit -c unlimited
 
-minetestserver ${ADDITIONAL_PARAMS} --config /data/minetest.conf --world /data/world/ --quiet &
+luantiserver ${ADDITIONAL_PARAMS} --config /data/minetest.conf --world /data/world/ --quiet &
 pid=$!
 
 sleep inf &
