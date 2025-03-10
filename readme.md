@@ -2,6 +2,8 @@
 minetest docker builder
 ------------
 
+# :warning: This repository is obsolete, please use the official luanti images instead
+
 Customized and patched minetest engine in a container
 
 ![docker](https://github.com/pandorabox-io/minetest_docker/workflows/docker/badge.svg)
