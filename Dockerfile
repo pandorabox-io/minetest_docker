@@ -1,5 +1,5 @@
 # Stage 1 build
-FROM alpine:3.21.3 AS builder
+FROM alpine:3.23.4 AS builder
 
 ENV ENGINE_BRANCH=5.15.2
 ENV ENGINE_REPO=https://github.com/minetest/minetest
@@ -60,7 +60,7 @@ RUN cd /git/minetest && cmake . \
 	make install
 
 # Stage 2 package
-FROM alpine:3.21.3
+FROM alpine:3.23.4
 
 RUN apk add --no-cache bzip2 \
 	sqlite-libs curl zlib gmp jsoncpp luajit \
